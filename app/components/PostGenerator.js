@@ -8,10 +8,8 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
     const [postResult, setPostResult] = useState(null);
 
     const handlePost = async (content, index) => {
-        if (!configData.linkedinToken || !configData.linkedinUrn) {
-            alert("Please configure LinkedIn credentials first.");
-            return;
-        }
+        // Check removed to allow backend env var fallback
+        // if (!configData.linkedinToken || !configData.linkedinUrn) { ... }
 
         setPostingIndex(index);
         setPostResult(null);
