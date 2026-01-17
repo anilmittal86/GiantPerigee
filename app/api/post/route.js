@@ -3,8 +3,10 @@ import { NextResponse } from "next/server";
 
 export async function POST(req) {
     try {
-        const { post_content } = await req.json();
-        let { access_token, urn } = await req.json();
+        const { post_content, access_token: clientToken, urn: clientUrn } = await req.json();
+
+        let access_token = clientToken;
+        let urn = clientUrn;
 
         // Fallback to server-side env vars if not provided by client
         if (!access_token) access_token = process.env.LINKEDIN_ACCESS_TOKEN;

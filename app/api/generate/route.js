@@ -3,8 +3,9 @@ import { NextResponse } from "next/server";
 
 export async function POST(req) {
     try {
-        const { product_info, guidelines } = await req.json();
-        let { gemini_api_key } = await req.json();
+        const { product_info, guidelines, gemini_api_key: clientKey } = await req.json();
+
+        let gemini_api_key = clientKey;
 
         // Fallback to server-side env var if not provided by client
         if (!gemini_api_key) {
