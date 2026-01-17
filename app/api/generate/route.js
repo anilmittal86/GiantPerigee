@@ -29,21 +29,39 @@ export async function POST(req) {
         console.log("Initializing Gemini model...");
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-        const prompt = `You are a professional LinkedIn social media manager.
-    
-    Company Guidelines:
-    ${guidelines}
-    
-    Product/Topic Info:
-    ${product_info}
-    
-    Task:
-    Create 3 distinct, engaging LinkedIn posts based on the above information.
-    1. Professional and informative.
-    2. Engaging and question-asking.
-    3. Short, punchy, and promotional.
-    
-    Return the response ONLY as a valid JSON array of strings. Do not include markdown formatting like \`\`\`json. Example: ["Post 1 content", "Post 2 content", "Post 3 content"]`;
+        const prompt = `Role: You are the Lead Content Strategist for a cutting-edge firm.
+        
+        Goal: Write 3 distinct, high-impact LinkedIn posts.
+
+        Brand Voice (Guidelines):
+        ${guidelines}
+
+        Context (Product/Topic):
+        ${product_info}
+
+        Task:
+        Create 3 distinct options. Each option MUST follow this exact structure:
+        
+        1. The Hook: A one-line scroll-stopper. (e.g., "Google Search is dying. Is your brand ready?")
+        2. The Agitation: Why the old way is failing or the problem.
+        3. The Insight: The specific value/solution based on the provided Context.
+        4. The CTA: A soft call to action.
+
+        Generate these 3 specific types of posts:
+        Option 1: The Wake Up Call (A hard truth).
+        Option 2: The Insight / How-To (Actionable advice).
+        Option 3: Myth-Busting or Future Forecast (Contrarian view).
+
+        Formatting:
+        - Use line breaks for readability.
+        - Use 3-5 relevant hashtags.
+        - Keep each post under 200 words.
+        - Sound like a human expert, not a robot. Avoid buzzwords like "delve", "unleash", "game-changer".
+
+        Return the response ONLY as a valid JSON array of strings. 
+        IMPORTANT: Do NOT include the "Option 1:" or "Option 2:" labels in the strings. Just the post content itself.
+        Do not include markdown formatting like \`\`\`json. 
+        Example: ["Hook... content...", "Hook... content...", "Hook... content..."]`;
 
         console.log("Sending prompt to Gemini...");
         const result = await model.generateContent(prompt);
