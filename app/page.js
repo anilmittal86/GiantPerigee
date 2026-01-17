@@ -20,6 +20,8 @@ export default function Home() {
                 product_info: config.productInfo,
                 guidelines: config.guidelines,
                 gemini_api_key: config.geminiKey,
+            }, {
+                timeout: 30000 // 30 seconds timeout
             });
 
             if (res.data.posts) {

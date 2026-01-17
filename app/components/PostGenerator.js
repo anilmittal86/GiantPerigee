@@ -25,7 +25,10 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                 setPostResult({ type: "success", msg: "Posted successfully!", link: res.data.link });
             }
         } catch (err) {
-            setPostResult({ type: "error", msg: err.response?.data?.error || "Failed to post." });
+            console.error(err);
+            const errorMsg = err.response?.data?.error || err.message || "Failed to post.";
+            const errorDetails = err.response?.data?.details ? JSON.stringify(err.response.data.details) : "";
+            setPostResult({ type: "error", msg: `${errorMsg} ${errorDetails}` });
         } finally {
             setPostingIndex(null);
         }
