@@ -19,7 +19,7 @@ export default function Home() {
         try {
             const res = await axios.post("/api/generate", {
                 product_info: config.productInfo,
-                guidelines: config.guidelines,
+                post_type: config.postType,
                 gemini_api_key: config.geminiKey,
             }, {
                 timeout: 30000 // 30 seconds timeout
