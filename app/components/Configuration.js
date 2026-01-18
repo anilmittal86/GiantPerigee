@@ -7,7 +7,7 @@ export default function Configuration({ onGenerate }) {
         geminiKey: "",
         linkedinToken: "",
         linkedinUrn: "",
-        guidelines: "",
+        postType: "mixed",
         productInfo: "",
     });
 
@@ -35,7 +35,7 @@ export default function Configuration({ onGenerate }) {
         // Pass relevant data up
         onGenerate({
             geminiKey: config.geminiKey,
-            guidelines: config.guidelines,
+            postType: config.postType,
             productInfo: config.productInfo,
             linkedinToken: config.linkedinToken,
             linkedinUrn: config.linkedinUrn
@@ -119,14 +119,25 @@ export default function Configuration({ onGenerate }) {
 
                         <div>
                             <div className="form-group">
-                                <label className="label">Marketing Guidelines</label>
-                                <textarea
-                                    name="guidelines"
-                                    className="textarea"
-                                    value={config.guidelines}
-                                    placeholder="Tone: Professional, witty, use emojis..."
-                                    onChange={handleChange}
-                                />
+                                <label className="label">Post Type</label>
+                                <div className="pill-container">
+                                    {[
+                                        { id: 'mixed', label: 'Mixed', icon: '✨' },
+                                        { id: 'research', label: 'Deep Dive', icon: '🧠' },
+                                        { id: 'pun', label: 'Humor', icon: '😂' },
+                                        { id: 'feature', label: 'Feature', icon: '🚀' },
+                                        { id: 'question', label: 'Question', icon: '🤔' }
+                                    ].map(type => (
+                                        <button
+                                            key={type.id}
+                                            className={`pill-btn ${config.postType === type.id ? 'active' : ''}`}
+                                            onClick={() => handleChange({ target: { name: 'postType', value: type.id } })}
+                                        >
+                                            <span>{type.icon}</span>
+                                            {type.label}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                             <div className="form-group">
                                 <label className="label">Product / Topic Info</label>
