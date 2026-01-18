@@ -44,43 +44,44 @@ export default function Configuration({ onGenerate }) {
     };
 
     return (
-        <div className="card" style={{ marginBottom: "2rem" }}>
+        <div className="card" style={{ marginBottom: "1.5rem" }}>
             <div
-                style={{ display: "flex", justifyContent: "space-between", cursor: "pointer" }}
+                style={{ display: "flex", justifyContent: "space-between", cursor: "pointer", alignItems: "center" }}
                 onClick={() => setIsOpen(!isOpen)}
             >
-                <h3>Configuration & Context</h3>
-                <span>{isOpen ? "▲" : "▼"}</span>
+                <h3 style={{ fontSize: "1.1rem" }}>Configuration & Context</h3>
+                <span style={{ color: "var(--text-dim)", fontSize: "0.8rem" }}>{isOpen ? "▲" : "▼"}</span>
             </div>
 
             {isOpen && (
-                <div style={{ marginTop: "1.5rem" }}>
-                    <div className="grid">
-                        <div style={{ marginBottom: "2rem" }}>
+                <div style={{ marginTop: "1rem" }}>
+                    <div className="grid" style={{ gap: "1.5rem" }}>
+                        <div style={{ marginBottom: "0.5rem" }}>
                             <div
                                 style={{
                                     display: "flex",
                                     alignItems: "center",
                                     cursor: "pointer",
                                     color: "var(--text-dim)",
-                                    fontSize: "0.9rem",
+                                    fontSize: "0.85rem",
+                                    fontWeight: 500,
                                     userSelect: "none"
                                 }}
                                 onClick={() => setShowAdvanced(!showAdvanced)}
                             >
-                                <span style={{ marginRight: "0.5rem" }}>{showAdvanced ? "▼" : "▶"}</span>
+                                <span style={{ marginRight: "0.4rem", fontSize: "0.7rem" }}>{showAdvanced ? "▼" : "▶"}</span>
                                 <span>Advanced Settings (API Keys)</span>
                             </div>
 
                             {showAdvanced && (
                                 <div style={{
-                                    marginTop: "1rem",
-                                    padding: "1.5rem",
+                                    marginTop: "0.75rem",
+                                    padding: "1rem",
                                     background: "var(--surface-highlight)",
                                     borderRadius: "8px",
                                     border: "1px solid var(--border)"
                                 }}>
-                                    <div className="form-group">
+                                    <div className="form-group" style={{ marginBottom: "1rem" }}>
                                         <label className="label">Gemini API Key</label>
                                         <input
                                             type="password"
@@ -91,7 +92,7 @@ export default function Configuration({ onGenerate }) {
                                             onChange={handleChange}
                                         />
                                     </div>
-                                    <div className="form-group">
+                                    <div className="form-group" style={{ marginBottom: "1rem" }}>
                                         <label className="label">LinkedIn Access Token</label>
                                         <input
                                             type="password"
@@ -102,7 +103,7 @@ export default function Configuration({ onGenerate }) {
                                             onChange={handleChange}
                                         />
                                     </div>
-                                    <div className="form-group">
+                                    <div className="form-group" style={{ marginBottom: "0" }}>
                                         <label className="label">Company URN (ID)</label>
                                         <input
                                             type="text"
@@ -124,8 +125,8 @@ export default function Configuration({ onGenerate }) {
                                     {[
                                         { id: 'mixed', label: 'Mixed', icon: '✨' },
                                         { id: 'research', label: 'Deep Dive', icon: '🧠' },
-                                        { id: 'pun', label: 'Humor', icon: '😂' },
                                         { id: 'feature', label: 'Feature', icon: '🚀' },
+                                        { id: 'pun', label: 'Humor', icon: '😂' },
                                         { id: 'question', label: 'Question', icon: '🤔' }
                                     ].map(type => (
                                         <button
@@ -133,13 +134,13 @@ export default function Configuration({ onGenerate }) {
                                             className={`pill-btn ${config.postType === type.id ? 'active' : ''}`}
                                             onClick={() => handleChange({ target: { name: 'postType', value: type.id } })}
                                         >
-                                            <span>{type.icon}</span>
+                                            <span style={{ fontSize: "1rem" }}>{type.icon}</span>
                                             {type.label}
                                         </button>
                                     ))}
                                 </div>
                             </div>
-                            <div className="form-group">
+                            <div className="form-group" style={{ marginBottom: "0.5rem" }}>
                                 <label className="label">Product / Topic Info</label>
                                 <textarea
                                     name="productInfo"
@@ -147,6 +148,7 @@ export default function Configuration({ onGenerate }) {
                                     value={config.productInfo}
                                     placeholder="Today we are launching Feature X..."
                                     onChange={handleChange}
+                                    style={{ minHeight: "100px" }}
                                 />
                             </div>
                         </div>
