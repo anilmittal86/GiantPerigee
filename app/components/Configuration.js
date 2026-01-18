@@ -32,6 +32,11 @@ export default function Configuration({ onGenerate }) {
         // if (!config.geminiKey) return alert("Gemini API Key is required"); // Optional now
         if (!config.productInfo) return alert("Please provide product info");
 
+        const wordCount = config.productInfo.trim().split(/\s+/).length;
+        if (wordCount < 10) {
+            return alert(`Please provide more context (at least 10 words). Current: ${wordCount} words.\n\nBetter context = Better posts!`);
+        }
+
         // Pass relevant data up
         onGenerate({
             geminiKey: config.geminiKey,
