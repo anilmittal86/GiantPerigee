@@ -1,36 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🚀 LinkedIn Marketing Agent
 
-## Getting Started
+**Your Automated AI Social Media Manager.**
 
-First, run the development server:
+This application empowers you to generate, edit, and publish high-impact LinkedIn posts using the power of **Google Gemini 2.0**. It's designed for professionals who want to maintain a consistent, authoritative presence without the daily grind of drafting from scratch.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+![UI Screenshot](https://via.placeholder.com/1200x600?text=LinkedIn+Marketing+Agent+Dashboard)
+*(Replace with actual screenshot)*
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## ✨ Key Features
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+-   **🧠 AI-Powered Content**: Generates 3 distinct post types (Hook, Insight, CTA) tailored to your brand voice.
+-   **🌍 Grounded in Reality**: Uses **Google Search** grounding to fetch real-time news and facts, ensuring your posts are up-to-date.
+-   **✍️ Full Editorial Control**: Edit any generated post directly in the browser to fix facts or tweak the tone before publishing.
+-   **💼 Direct Integration**: Posts directly to your LinkedIn Company Page with a single click.
+-   **🎨 Premium UI**: A clean, modern interface featuring **Geist** typography and a distraction-free design.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🛠️ Technology Stack
 
-## Learn More
+-   **Framework**: [Next.js 16](https://nextjs.org/) (App Router)
+-   **AI Model**: [Google Gemini 2.0 Flash](https://ai.google.dev/)
+-   **Integration**: LinkedIn API (OAuth 2.0)
+-   **Styling**: CSS Modules with Premium Design Tokens
 
-To learn more about Next.js, take a look at the following resources:
+## 🚀 Getting Started
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Prerequisites
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+-   Node.js 18+ installed.
+-   A Google AI Studio API Key.
+-   LinkedIn Developer App credentials.
 
-## Deploy on Vercel
+### Installation
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/anilmittal86/GiantPerigee.git
+    cd LinkedInPostAgent
+    ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+2.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
+
+3.  **Run the development server**:
+    ```bash
+    npm run dev
+    ```
+
+4.  **Open the App**:
+    Visit [http://localhost:3000](http://localhost:3000).
+
+### Configuration
+
+You can configure your API keys in two ways:
+
+1.  **UI (Recommended for Local)**: Open the "Advanced Settings" toggle in the app and paste your keys.
+2.  **Environment Variables**: Create a `.env.local` file in the root directory:
+    ```env
+    GEMINI_API_KEY=your_key_here
+    LINKEDIN_ACCESS_TOKEN=your_token_here
+    LINKEDIN_ORG_URN=urn:li:organization:123456
+    ```
+
+👉 **Need help getting keys?** Check the built-in **User Guide** in the app header!
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+This project is licensed under the generic MIT License.
