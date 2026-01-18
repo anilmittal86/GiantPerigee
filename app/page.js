@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import Configuration from "./components/Configuration";
 import PostGenerator from "./components/PostGenerator";
@@ -37,10 +38,15 @@ export default function Home() {
     return (
         <div className="container">
             <header className="header">
-                <h1>LinkedIn Marketing Agent</h1>
-                <div style={{ fontSize: "0.875rem", color: "var(--text-dim)" }}>
-                    Automated Social Media Manager
+                <div>
+                    <h1>LinkedIn Marketing Agent</h1>
+                    <div style={{ fontSize: "0.875rem", color: "var(--text-dim)" }}>
+                        Automated Social Media Manager
+                    </div>
                 </div>
+                <Link href="/guide" className="btn-secondary" style={{ textDecoration: "none", padding: "0.5rem 1rem", borderRadius: "8px", fontSize: "0.9rem" }}>
+                    📚 User Guide
+                </Link>
             </header>
 
             <main>

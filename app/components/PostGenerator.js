@@ -1,11 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 
 export default function PostGenerator({ generatedPosts, loading, configData }) {
     const [postingIndex, setPostingIndex] = useState(null);
     const [postResult, setPostResult] = useState(null);
+    const [editablePosts, setEditablePosts] = useState([]);
+
+    useEffect(() => {
+        if (generatedPosts && generatedPosts.length > 0) {
+            setEditablePosts(generatedPosts);
+        }
+    }, [generatedPosts]);
 
     const handlePost = async (content, index) => {
         // Check removed to allow backend env var fallback
@@ -51,6 +58,15 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
         );
     }
 
+    // Allow manual updates if generatedPosts changes deeply (simple check)
+    // Better approach: use useEffect
+
+    const handlePostChange = (text, idx) => {
+        const newPosts = [...editablePosts];
+        newPosts[idx] = text;
+        setEditablePosts(newPosts);
+    };
+
     return (
         <div>
             <h2 style={{ marginBottom: "1.5rem" }}>Select a Post</h2>
@@ -70,12 +86,26 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
             )}
 
             <div className="grid">
-                {generatedPosts.map((post, idx) => (
+                {editablePosts.map((post, idx) => (
                     <div key={idx} className="card">
                         <div className="badge badge-blue">Option {idx + 1}</div>
-                        <div style={{ whiteSpace: "pre-wrap", flex: 1, marginBottom: "1.5rem", lineHeight: "1.5" }}>
-                            {post}
-                        </div>
+                        <textarea
+                            value={post}
+                            onChange={(e) => handlePostChange(e.target.value, idx)}
+                            style={{
+                                width: "100%",
+                                minHeight: "200px",
+                                background: "var(--background)",
+                                color: "var(--text-main)",
+                                border: "1px solid var(--border)",
+                                borderRadius: "4px",
+                                padding: "0.5rem",
+                                marginBottom: "1rem",
+                                resize: "vertical",
+                                fontFamily: "inherit",
+                                lineHeight: "1.5"
+                            }}
+                        />
                         <button
                             className="btn btn-secondary"
                             onClick={() => handlePost(post, idx)}

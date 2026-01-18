@@ -27,7 +27,10 @@ export async function POST(req) {
         const genAI = new GoogleGenerativeAI(gemini_api_key);
         // User has access to gemini-2.0-flash
         console.log("Initializing Gemini model...");
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = genAI.getGenerativeModel({
+            model: "gemini-2.0-flash",
+            tools: [{ googleSearch: {} }],
+        });
 
         const prompt = `Role: You are the Lead Content Strategist for a cutting-edge firm.
         

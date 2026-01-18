@@ -12,6 +12,7 @@ export default function Configuration({ onGenerate }) {
     });
 
     const [isOpen, setIsOpen] = useState(true);
+    const [showAdvanced, setShowAdvanced] = useState(false);
 
     useEffect(() => {
         const saved = localStorage.getItem("linkedin-agent-config");
@@ -55,40 +56,65 @@ export default function Configuration({ onGenerate }) {
             {isOpen && (
                 <div style={{ marginTop: "1.5rem" }}>
                     <div className="grid">
-                        <div>
-                            <div className="form-group">
-                                <label className="label">Gemini API Key <small style={{ fontWeight: 'normal', color: 'gray' }}>(Optional)</small></label>
-                                <input
-                                    type="password"
-                                    name="geminiKey"
-                                    className="input"
-                                    value={config.geminiKey}
-                                    placeholder="AIzaSy..."
-                                    onChange={handleChange}
-                                />
+                        <div style={{ marginBottom: "2rem" }}>
+                            <div
+                                style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    cursor: "pointer",
+                                    color: "var(--text-dim)",
+                                    fontSize: "0.9rem",
+                                    userSelect: "none"
+                                }}
+                                onClick={() => setShowAdvanced(!showAdvanced)}
+                            >
+                                <span style={{ marginRight: "0.5rem" }}>{showAdvanced ? "▼" : "▶"}</span>
+                                <span>Advanced Settings (API Keys)</span>
                             </div>
-                            <div className="form-group">
-                                <label className="label">LinkedIn Access Token <small style={{ fontWeight: 'normal', color: 'gray' }}>(Optional)</small></label>
-                                <input
-                                    type="password"
-                                    name="linkedinToken"
-                                    className="input"
-                                    value={config.linkedinToken}
-                                    placeholder="AQWe..."
-                                    onChange={handleChange}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label className="label">Company URN (ID) <small style={{ fontWeight: 'normal', color: 'gray' }}>(Optional)</small></label>
-                                <input
-                                    type="text"
-                                    name="linkedinUrn"
-                                    className="input"
-                                    value={config.linkedinUrn}
-                                    placeholder="urn:li:organization:123456"
-                                    onChange={handleChange}
-                                />
-                            </div>
+
+                            {showAdvanced && (
+                                <div style={{
+                                    marginTop: "1rem",
+                                    padding: "1.5rem",
+                                    background: "var(--surface-highlight)",
+                                    borderRadius: "8px",
+                                    border: "1px solid var(--border)"
+                                }}>
+                                    <div className="form-group">
+                                        <label className="label">Gemini API Key</label>
+                                        <input
+                                            type="password"
+                                            name="geminiKey"
+                                            className="input"
+                                            value={config.geminiKey}
+                                            placeholder="Leave empty to use server env var"
+                                            onChange={handleChange}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="label">LinkedIn Access Token</label>
+                                        <input
+                                            type="password"
+                                            name="linkedinToken"
+                                            className="input"
+                                            value={config.linkedinToken}
+                                            placeholder="Leave empty to use server env var"
+                                            onChange={handleChange}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="label">Company URN (ID)</label>
+                                        <input
+                                            type="text"
+                                            name="linkedinUrn"
+                                            className="input"
+                                            value={config.linkedinUrn}
+                                            placeholder="urn:li:organization:..."
+                                            onChange={handleChange}
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div>
