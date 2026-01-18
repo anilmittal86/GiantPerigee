@@ -123,6 +123,17 @@ export default function Configuration({ onGenerate }) {
                                             onChange={handleChange}
                                         />
                                     </div>
+                                    <div className="form-group" style={{ marginTop: "1rem" }}>
+                                        <label className="label">Target Subreddit</label>
+                                        <input
+                                            type="text"
+                                            name="subreddit"
+                                            className="input"
+                                            value={config.subreddit}
+                                            placeholder="AEO_AkuparaAI (without r/)"
+                                            onChange={handleChange}
+                                        />
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -159,20 +170,6 @@ export default function Configuration({ onGenerate }) {
                                     onChange={handleChange}
                                     style={{ minHeight: "100px" }}
                                 />
-                            </div>
-                            <div className="form-group" style={{ marginBottom: "0.5rem" }}>
-                                <label className="label">Target Subreddit (for Reddit share)</label>
-                                <div style={{ display: "flex", alignItems: "center" }}>
-                                    <span style={{ marginRight: "0.5rem", fontWeight: "bold", color: "var(--text-dim)" }}>r/</span>
-                                    <input
-                                        type="text"
-                                        name="subreddit"
-                                        className="input"
-                                        value={config.subreddit}
-                                        placeholder="AEO_AkuparaAI"
-                                        onChange={handleChange}
-                                    />
-                                </div>
                             </div>
                         </div>
                     </div>
