@@ -22,6 +22,7 @@ export default function Home() {
                 product_info: config.productInfo,
                 post_type: config.postType,
                 gemini_api_key: config.geminiKey,
+                subreddit: config.subreddit,
             }, {
                 timeout: 30000 // 30 seconds timeout
             });

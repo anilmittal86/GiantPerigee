@@ -7,6 +7,7 @@ export default function Configuration({ onGenerate }) {
         geminiKey: "",
         linkedinToken: "",
         linkedinUrn: "",
+        subreddit: "AEO_AkuparaAI",
         postType: "mixed",
         productInfo: "",
     });
@@ -17,7 +18,9 @@ export default function Configuration({ onGenerate }) {
     useEffect(() => {
         const saved = localStorage.getItem("linkedin-agent-config");
         if (saved) {
-            setConfig(JSON.parse(saved));
+            const parsed = JSON.parse(saved);
+            // Merge with default/current state to ensure new keys (like subreddit) exist
+            setConfig(prev => ({ ...prev, ...parsed }));
         }
     }, []);
 
@@ -43,7 +46,8 @@ export default function Configuration({ onGenerate }) {
             postType: config.postType,
             productInfo: config.productInfo,
             linkedinToken: config.linkedinToken,
-            linkedinUrn: config.linkedinUrn
+            linkedinUrn: config.linkedinUrn,
+            subreddit: config.subreddit
         });
         setIsOpen(false); // Collapse after generating
     };
@@ -156,6 +160,20 @@ export default function Configuration({ onGenerate }) {
                                     style={{ minHeight: "100px" }}
                                 />
                             </div>
+                            <div className="form-group" style={{ marginBottom: "0.5rem" }}>
+                                <label className="label">Target Subreddit (for Reddit share)</label>
+                                <div style={{ display: "flex", alignItems: "center" }}>
+                                    <span style={{ marginRight: "0.5rem", fontWeight: "bold", color: "var(--text-dim)" }}>r/</span>
+                                    <input
+                                        type="text"
+                                        name="subreddit"
+                                        className="input"
+                                        value={config.subreddit}
+                                        placeholder="AEO_AkuparaAI"
+                                        onChange={handleChange}
+                                    />
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -165,7 +183,8 @@ export default function Configuration({ onGenerate }) {
                         </button>
                     </div>
                 </div>
-            )}
-        </div>
+            )
+            }
+        </div >
     );
 }

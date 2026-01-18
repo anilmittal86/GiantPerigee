@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 export async function POST(req) {
     try {
         console.log("Generate API called");
-        const { product_info, post_type, gemini_api_key: clientKey } = await req.json();
+        const { product_info, post_type, gemini_api_key: clientKey, subreddit = "AEO_AkuparaAI" } = await req.json();
 
         let gemini_api_key = clientKey;
 
@@ -99,29 +99,35 @@ export async function POST(req) {
 
         GLOBAL CONSTRAINTS & FORMATTING (CRITICAL):
         1. **Strict Context Adherence**: Write ONLY about the specific details in the Context.
-        2. **Double Line Breaks**: You MUST use double line breaks (\n\n).
-        3. **No Labels**: Do NOT use structural labels.
+        2. **Double Line Breaks**: You MUST use double line breaks (\\n\\n).
+        3. **No Labels**: Do NOT use structural labels (e.g. "Hook:", "Body:").
         4. **Tone**: Human, professional, impactful.
-        5. **Hashtags**: Include relevant hashtags AT THE END.
-        6. **Quantity**: generate exactly 3 High-Quality potential options. **DO NOT purposely generate bad posts.** All 3 must be usable.
+        5. **Hashtags**: Include relevant hashtags AT THE END (LinkedIn Only).
+        6. **Quantity**: generate exactly 3 High-Quality potential options for LinkedIn AND 3 options for Reddit.
 
-        7. **CRITICAL SCORING INSTRUCTION (The "Simon Cowell" Rule)**:
-        You are now a ruthless viral content critic. Most LinkedIn posts are average.
-        - **Score 6.0 - 7.5**: Good, professional, safe. (Most posts fall here).
+        PLATFORM SPECIFICS:
+        - **LinkedIn**: Professional, thought-leader style. Use hashtags.
+        - **Reddit**: Conversational, community-focused, specific to the Subreddit "r/${subreddit}".
+            - **Title**: Required. Catchy, specific, no clickbait.
+            - **Body**: Informal, discussion-driven. NO HASHTAGS.
+
+        CRITICAL SCORING INSTRUCTION (The "Simon Cowell" Rule):
+        - **Score 6.0 - 7.5**: Good, professional, safe.
         - **Score 7.6 - 8.9**: Great hook, strong value, "Scroll Stopper".
         - **Score 9.0+**: RARE. Absolute viral perfection.
         
-        **Constraint:** You MUST differentiate. Do not give them all the same score. Find the flaws. Be critical.
-        
         Output Schema:
-        Return a JSON array of exactly 3 objects:
-        [
-            {
-                "content": "post 1 content...",
-                "score": 7.2
-            },
-            ...
-        ]`;
+        Return a JSON object with two keys "linkedin" and "reddit":
+        {
+            "linkedin": [
+                { "content": "post 1 content...", "score": 7.2 },
+                ...
+            ],
+            "reddit": [
+                { "title": "Post Title", "content": "post body...", "score": 8.5 },
+                ...
+            ]
+        }`;
 
         console.log("Sending prompt to Gemini...");
         const result = await model.generateContent(prompt);
@@ -133,8 +139,25 @@ export async function POST(req) {
         // Smart JSON extraction that fixes "Bad control character" errors
         // by escaping newlines inside strings.
         function sanitizeAndParseJson(str) {
-            const startIndex = str.indexOf('[');
-            if (startIndex === -1) return null;
+            // Find start of JSON (either object or array)
+            const startObj = str.indexOf('{');
+            const startArr = str.indexOf('[');
+
+            let startIndex = -1;
+            let openChar = '';
+            let closeChar = '';
+
+            if (startObj !== -1 && (startArr === -1 || startObj < startArr)) {
+                startIndex = startObj;
+                openChar = '{';
+                closeChar = '}';
+            } else if (startArr !== -1) {
+                startIndex = startArr;
+                openChar = '[';
+                closeChar = ']';
+            } else {
+                return null;
+            }
 
             let result = "";
             let depth = 0;
@@ -167,9 +190,9 @@ export async function POST(req) {
                     // Not in string
                     if (char === '"') {
                         inString = true;
-                    } else if (char === '[') {
+                    } else if (char === openChar) {
                         depth++;
-                    } else if (char === ']') {
+                    } else if (char === closeChar) {
                         depth--;
                     }
                     result += char;
@@ -204,9 +227,23 @@ export async function POST(req) {
             }
         }
 
-        if (posts && Array.isArray(posts)) {
-            // Sort by score descending
-            posts.sort((a, b) => (b.score || 0) - (a.score || 0));
+        if (posts) {
+            // Validate structure
+            if (Array.isArray(posts)) {
+                // Legacy support or fallback if AI ignores schema
+                posts = {
+                    linkedin: posts.sort((a, b) => (b.score || 0) - (a.score || 0)),
+                    reddit: []
+                };
+            } else {
+                // Sort both arrays if present
+                if (posts.linkedin && Array.isArray(posts.linkedin)) {
+                    posts.linkedin.sort((a, b) => (b.score || 0) - (a.score || 0));
+                }
+                if (posts.reddit && Array.isArray(posts.reddit)) {
+                    posts.reddit.sort((a, b) => (b.score || 0) - (a.score || 0));
+                }
+            }
         }
 
         console.log("Parsed posts successfully");

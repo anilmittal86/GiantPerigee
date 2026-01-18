@@ -6,18 +6,33 @@ import axios from "axios";
 export default function PostGenerator({ generatedPosts, loading, configData }) {
     const [postingIndex, setPostingIndex] = useState(null);
     const [postResult, setPostResult] = useState(null);
-    const [editablePosts, setEditablePosts] = useState([]);
+    const [activeTab, setActiveTab] = useState("linkedin");
+
+    // Store posts for each platform
+    const [posts, setPosts] = useState({
+        linkedin: [],
+        reddit: []
+    });
 
     useEffect(() => {
-        if (generatedPosts && generatedPosts.length > 0) {
-            setEditablePosts(generatedPosts);
+        if (generatedPosts) {
+            // Handle new object structure or legacy array
+            let newPosts = { linkedin: [], reddit: [] };
+
+            if (Array.isArray(generatedPosts)) {
+                newPosts.linkedin = generatedPosts;
+            } else {
+                newPosts.linkedin = generatedPosts.linkedin || [];
+                newPosts.reddit = generatedPosts.reddit || [];
+            }
+
+            setPosts(newPosts);
+
+            // Auto-switch to populated tab if one is empty? No, default to LinkedIn.
         }
     }, [generatedPosts]);
 
     const handlePost = async (content, index) => {
-        // Check removed to allow backend env var fallback
-        // if (!configData.linkedinToken || !configData.linkedinUrn) { ... }
-
         setPostingIndex(index);
         setPostResult(null);
 
@@ -41,6 +56,35 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
         }
     };
 
+    const handleRedditShare = (title, content) => {
+        const subreddit = configData.subreddit || "AEO_AkuparaAI";
+        // Use old.reddit.com as it reliably handles the text parameter
+        const url = `https://old.reddit.com/r/${subreddit}/submit?title=${encodeURIComponent(title)}&selftext=true&text=${encodeURIComponent(content)}`;
+        window.open(url, '_blank');
+    };
+
+    const handleCopy = (text) => {
+        navigator.clipboard.writeText(text).then(() => {
+            alert("Content copied to clipboard!");
+        }).catch(err => {
+            console.error("Failed to copy: ", err);
+        });
+    };
+
+    const handleContentChange = (val, idx, field = "content") => {
+        const newPosts = { ...posts };
+        const list = [...newPosts[activeTab]];
+
+        if (field === "content") {
+            list[idx] = { ...list[idx], content: val };
+        } else if (field === "title") {
+            list[idx] = { ...list[idx], title: val };
+        }
+
+        newPosts[activeTab] = list;
+        setPosts(newPosts);
+    };
+
     if (loading) {
         return (
             <div style={{ textAlign: "center", padding: "4rem" }}>
@@ -50,7 +94,10 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
         );
     }
 
-    if (!generatedPosts || generatedPosts.length === 0) {
+    // Check if we have any posts at all
+    const hasPosts = posts.linkedin.length > 0 || posts.reddit.length > 0;
+
+    if (!hasPosts) {
         return (
             <div style={{ textAlign: "center", padding: "4rem", color: "var(--text-dim)" }}>
                 <p>No posts generated yet. Configure and click "Generate".</p>
@@ -58,20 +105,30 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
         );
     }
 
-    // Allow manual updates if generatedPosts changes deeply (simple check)
-    // Better approach: use useEffect
-
-    const handlePostChange = (text, idx) => {
-        const newPosts = [...editablePosts];
-        newPosts[idx] = { ...newPosts[idx], content: text };
-        setEditablePosts(newPosts);
-    };
+    const currentPosts = posts[activeTab];
 
     return (
         <div>
-            <h2 style={{ marginBottom: "1.5rem" }}>Select a Post</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+                <h2 style={{ margin: 0 }}>Select a Post</h2>
 
-            {postResult && (
+                <div className="pill-container" style={{ margin: 0 }}>
+                    <button
+                        className={`pill-btn ${activeTab === 'linkedin' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('linkedin')}
+                    >
+                        LinkedIn
+                    </button>
+                    <button
+                        className={`pill-btn ${activeTab === 'reddit' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('reddit')}
+                    >
+                        Reddit
+                    </button>
+                </div>
+            </div>
+
+            {postResult && activeTab === "linkedin" && (
                 <div style={{
                     padding: "1rem",
                     marginBottom: "1rem",
@@ -86,10 +143,12 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
             )}
 
             <div className="grid">
-                {editablePosts.map((postObj, idx) => (
+                {currentPosts.map((postObj, idx) => (
                     <div key={idx} className="card" style={{ position: "relative" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                            <div className="badge badge-blue">Option {idx + 1}</div>
+                            <div className={`badge ${activeTab === 'reddit' ? 'badge-orange' : 'badge-blue'}`}>
+                                Option {idx + 1}
+                            </div>
                             {postObj.score && (
                                 <div className="badge" style={{
                                     backgroundColor: postObj.score >= 8 ? "var(--success)" : "var(--warning)",
@@ -101,11 +160,20 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                             )}
                         </div>
 
-
+                        {activeTab === "reddit" && (
+                            <input
+                                type="text"
+                                className="input"
+                                value={postObj.title || ""}
+                                onChange={(e) => handleContentChange(e.target.value, idx, "title")}
+                                placeholder="Post Title"
+                                style={{ marginBottom: "0.5rem", fontWeight: "bold" }}
+                            />
+                        )}
 
                         <textarea
-                            value={postObj.content || postObj /* Fallback for old string format */}
-                            onChange={(e) => handlePostChange(e.target.value, idx)}
+                            value={postObj.content || ""}
+                            onChange={(e) => handleContentChange(e.target.value, idx, "content")}
                             style={{
                                 width: "100%",
                                 minHeight: "200px",
@@ -121,16 +189,40 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                                 lineHeight: "1.6"
                             }}
                         />
-                        <button
-                            className="btn btn-secondary"
-                            onClick={() => handlePost(postObj.content || postObj, idx)}
-                            disabled={postingIndex !== null}
-                        >
-                            {postingIndex === idx ? "Posting..." : "Post to LinkedIn"}
-                        </button>
+
+                        {activeTab === "linkedin" ? (
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => handlePost(postObj.content, idx)}
+                                disabled={postingIndex !== null}
+                            >
+                                {postingIndex === idx ? "Posting..." : "Post to LinkedIn"}
+                            </button>
+                        ) : (
+                            <div style={{ display: "flex", gap: "0.5rem" }}>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => handleCopy(postObj.content)}
+                                >
+                                    Copy Content
+                                </button>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => handleRedditShare(postObj.title || "", postObj.content)}
+                                >
+                                    Share on r/{configData.subreddit || "AEO_AkuparaAI"}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>
+
+            {currentPosts.length === 0 && (
+                <div style={{ textAlign: "center", padding: "2rem", color: "var(--text-dim)" }}>
+                    No generated posts found for {activeTab === "linkedin" ? "LinkedIn" : "Reddit"}.
+                </div>
+            )}
         </div>
     );
 }
