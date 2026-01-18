@@ -98,20 +98,27 @@ export async function POST(req) {
         ${taskInstruction}
 
         GLOBAL CONSTRAINTS & FORMATTING (CRITICAL):
-        1. **Strict Context Adherence**: Write ONLY about the specific details in the Context. Do not generalize. If the user mentions "Golden Prompts", talk about "Golden Prompts".
-        2. **Double Line Breaks**: You MUST use double line breaks (\n\n) to separate paragraphs. Walls of text are unacceptable.
-        3. **No Labels**: Do NOT use structural labels like "Hook:", "Question:", "Option 1:". Just write the post content.
-        4. **Tone**: Sound human, professional, and impactful.
-        5. **Hashtags**: Include relevant hashtags AT THE END OF EACH POST CONTENT.
-        6. **Quantity**: You MUST generate exactly 3 generated posts.
-        7. **Scoring**: You are also a "Viral Content Judge". Rate each post 1-10 based on viral potential.
+        1. **Strict Context Adherence**: Write ONLY about the specific details in the Context.
+        2. **Double Line Breaks**: You MUST use double line breaks (\n\n).
+        3. **No Labels**: Do NOT use structural labels.
+        4. **Tone**: Human, professional, impactful.
+        5. **Hashtags**: Include relevant hashtags AT THE END.
+        6. **Quantity**: generate exactly 3 High-Quality potential options. **DO NOT purposely generate bad posts.** All 3 must be usable.
+
+        7. **CRITICAL SCORING INSTRUCTION (The "Simon Cowell" Rule)**:
+        You are now a ruthless viral content critic. Most LinkedIn posts are average.
+        - **Score 6.0 - 7.5**: Good, professional, safe. (Most posts fall here).
+        - **Score 7.6 - 8.9**: Great hook, strong value, "Scroll Stopper".
+        - **Score 9.0+**: RARE. Absolute viral perfection.
+        
+        **Constraint:** You MUST differentiate. Do not give them all the same score. Find the flaws. Be critical.
         
         Output Schema:
         Return a JSON array of exactly 3 objects:
         [
             {
                 "content": "post 1 content...",
-                "score": 8
+                "score": 7.2
             },
             ...
         ]`;
