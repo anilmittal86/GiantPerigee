@@ -63,7 +63,7 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
 
     const handlePostChange = (text, idx) => {
         const newPosts = [...editablePosts];
-        newPosts[idx] = text;
+        newPosts[idx] = { ...newPosts[idx], content: text };
         setEditablePosts(newPosts);
     };
 
@@ -86,11 +86,25 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
             )}
 
             <div className="grid">
-                {editablePosts.map((post, idx) => (
-                    <div key={idx} className="card">
-                        <div className="badge badge-blue">Option {idx + 1}</div>
+                {editablePosts.map((postObj, idx) => (
+                    <div key={idx} className="card" style={{ position: "relative" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                            <div className="badge badge-blue">Option {idx + 1}</div>
+                            {postObj.score && (
+                                <div className="badge" style={{
+                                    backgroundColor: postObj.score >= 8 ? "var(--success)" : "var(--warning)",
+                                    color: "#000",
+                                    fontWeight: "bold"
+                                }}>
+                                    Score: {postObj.score}/10
+                                </div>
+                            )}
+                        </div>
+
+
+
                         <textarea
-                            value={post}
+                            value={postObj.content || postObj /* Fallback for old string format */}
                             onChange={(e) => handlePostChange(e.target.value, idx)}
                             style={{
                                 width: "100%",
@@ -103,14 +117,13 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                                 marginBottom: "1rem",
                                 resize: "vertical",
                                 fontFamily: "inherit",
-                                fontFamily: "inherit",
                                 fontSize: "1.1rem",
                                 lineHeight: "1.6"
                             }}
                         />
                         <button
                             className="btn btn-secondary"
-                            onClick={() => handlePost(post, idx)}
+                            onClick={() => handlePost(postObj.content || postObj, idx)}
                             disabled={postingIndex !== null}
                         >
                             {postingIndex === idx ? "Posting..." : "Post to LinkedIn"}

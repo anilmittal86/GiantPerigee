@@ -102,11 +102,19 @@ export async function POST(req) {
         2. **Double Line Breaks**: You MUST use double line breaks (\n\n) to separate paragraphs. Walls of text are unacceptable.
         3. **No Labels**: Do NOT use structural labels like "Hook:", "Question:", "Option 1:". Just write the post content.
         4. **Tone**: Sound human, professional, and impactful.
-        5. **Hashtags**: Include relevant hashtags AT THE END OF EACH POST CONTENT. Do NOT create a separate post just for hashtags.
+        5. **Hashtags**: Include relevant hashtags AT THE END OF EACH POST CONTENT.
         6. **Quantity**: You MUST generate exactly 3 generated posts.
+        7. **Scoring**: You are also a "Viral Content Judge". Rate each post 1-10 based on viral potential.
         
         Output Schema:
-        Return a JSON array of exactly 3 strings: [ "post 1 content...", "post 2 content...", "post 3 content..." ]`;
+        Return a JSON array of exactly 3 objects:
+        [
+            {
+                "content": "post 1 content...",
+                "score": 8
+            },
+            ...
+        ]`;
 
         console.log("Sending prompt to Gemini...");
         const result = await model.generateContent(prompt);
@@ -187,6 +195,11 @@ export async function POST(req) {
                 // Let's assume the smart parser is the main defense.
                 throw new Error("Failed to parse posts. Raw response: " + text.substring(0, 100));
             }
+        }
+
+        if (posts && Array.isArray(posts)) {
+            // Sort by score descending
+            posts.sort((a, b) => (b.score || 0) - (a.score || 0));
         }
 
         console.log("Parsed posts successfully");
