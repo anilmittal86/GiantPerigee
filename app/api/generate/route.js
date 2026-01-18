@@ -102,10 +102,11 @@ export async function POST(req) {
         2. **Double Line Breaks**: You MUST use double line breaks (\n\n) to separate paragraphs. Walls of text are unacceptable.
         3. **No Labels**: Do NOT use structural labels like "Hook:", "Question:", "Option 1:". Just write the post content.
         4. **Tone**: Sound human, professional, and impactful.
-        5. **Hashtags**: Add relevant hashtags at the end.
+        5. **Hashtags**: Include relevant hashtags AT THE END OF EACH POST CONTENT. Do NOT create a separate post just for hashtags.
+        6. **Quantity**: You MUST generate exactly 3 generated posts.
         
         Output Schema:
-        Return a JSON array of strings: string[]`;
+        Return a JSON array of exactly 3 strings: [ "post 1 content...", "post 2 content...", "post 3 content..." ]`;
 
         console.log("Sending prompt to Gemini...");
         const result = await model.generateContent(prompt);

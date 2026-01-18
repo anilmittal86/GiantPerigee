@@ -103,7 +103,9 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                                 marginBottom: "1rem",
                                 resize: "vertical",
                                 fontFamily: "inherit",
-                                lineHeight: "1.5"
+                                fontFamily: "inherit",
+                                fontSize: "1.1rem",
+                                lineHeight: "1.6"
                             }}
                         />
                         <button
