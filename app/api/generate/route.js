@@ -103,13 +103,23 @@ export async function POST(req) {
         3. **No Labels**: Do NOT use structural labels (e.g. "Hook:", "Body:").
         4. **Tone**: Human, professional, impactful.
         5. **Hashtags**: Include relevant hashtags AT THE END (LinkedIn Only).
-        6. **Quantity**: generate exactly 3 High-Quality potential options for LinkedIn AND 3 options for Reddit.
+        6. **Quantity**: generate exactly 3 High-Quality potential options for LinkedIn, 3 options for Reddit, AND 3 thread options for Twitter.
 
         PLATFORM SPECIFICS:
         - **LinkedIn**: Professional, thought-leader style. Use hashtags.
         - **Reddit**: Conversational, community-focused, specific to the Subreddit "r/${subreddit}".
             - **Title**: Required. Catchy, specific, no clickbait.
             - **Body**: Informal, discussion-driven. NO HASHTAGS.
+        - **Twitter**: Engaging threads optimized for Twitter's format.
+            - **Thread Format**: Each option should be a complete thread (array of tweets).
+            - **Tweet Length**: Each tweet MUST be 280 characters or less.
+            - **Thread Structure**:
+                - Tweet 1: Strong hook that grabs attention
+                - Tweet 2-4: Break down the main points (numbered or flowing narrative)
+                - Last Tweet: CTA or thought-provoking conclusion
+            - **Style**: Conversational, punchy, use emojis sparingly for emphasis.
+            - **Hashtags**: 1-2 relevant hashtags only in the last tweet.
+            - Each thread should have 3-6 tweets total.
 
         CRITICAL SCORING INSTRUCTION (The "Simon Cowell" Rule):
         - **Score 6.0 - 7.5**: Good, professional, safe.
@@ -117,7 +127,7 @@ export async function POST(req) {
         - **Score 9.0+**: RARE. Absolute viral perfection.
         
         Output Schema:
-        Return a JSON object with two keys "linkedin" and "reddit":
+        Return a JSON object with three keys "linkedin", "reddit", and "twitter":
         {
             "linkedin": [
                 { "content": "post 1 content...", "score": 7.2 },
@@ -125,6 +135,17 @@ export async function POST(req) {
             ],
             "reddit": [
                 { "title": "Post Title", "content": "post body...", "score": 8.5 },
+                ...
+            ],
+            "twitter": [
+                {
+                    "thread": [
+                        "Tweet 1 text (max 280 chars)...",
+                        "Tweet 2 text (max 280 chars)...",
+                        "Tweet 3 text (max 280 chars)..."
+                    ],
+                    "score": 8.0
+                },
                 ...
             ]
         }`;
@@ -233,15 +254,19 @@ export async function POST(req) {
                 // Legacy support or fallback if AI ignores schema
                 posts = {
                     linkedin: posts.sort((a, b) => (b.score || 0) - (a.score || 0)),
-                    reddit: []
+                    reddit: [],
+                    twitter: []
                 };
             } else {
-                // Sort both arrays if present
+                // Sort all arrays if present
                 if (posts.linkedin && Array.isArray(posts.linkedin)) {
                     posts.linkedin.sort((a, b) => (b.score || 0) - (a.score || 0));
                 }
                 if (posts.reddit && Array.isArray(posts.reddit)) {
                     posts.reddit.sort((a, b) => (b.score || 0) - (a.score || 0));
+                }
+                if (posts.twitter && Array.isArray(posts.twitter)) {
+                    posts.twitter.sort((a, b) => (b.score || 0) - (a.score || 0));
                 }
             }
         }

@@ -7,6 +7,8 @@ export default function Configuration({ onGenerate }) {
         geminiKey: "",
         linkedinToken: "",
         linkedinUrn: "",
+        twitterToken: "",
+        twitterUserId: "",
         subreddit: "AEO_AkuparaAI",
         postType: "mixed",
         productInfo: "",
@@ -47,6 +49,8 @@ export default function Configuration({ onGenerate }) {
             productInfo: config.productInfo,
             linkedinToken: config.linkedinToken,
             linkedinUrn: config.linkedinUrn,
+            twitterToken: config.twitterToken,
+            twitterUserId: config.twitterUserId,
             subreddit: config.subreddit
         });
         setIsOpen(false); // Collapse after generating
@@ -112,7 +116,7 @@ export default function Configuration({ onGenerate }) {
                                             onChange={handleChange}
                                         />
                                     </div>
-                                    <div className="form-group" style={{ marginBottom: "0" }}>
+                                    <div className="form-group" style={{ marginBottom: "1rem" }}>
                                         <label className="label">Company URN (ID)</label>
                                         <input
                                             type="text"
@@ -123,7 +127,29 @@ export default function Configuration({ onGenerate }) {
                                             onChange={handleChange}
                                         />
                                     </div>
-                                    <div className="form-group" style={{ marginTop: "1rem" }}>
+                                    <div className="form-group" style={{ marginBottom: "1rem" }}>
+                                        <label className="label">Twitter Bearer Token</label>
+                                        <input
+                                            type="password"
+                                            name="twitterToken"
+                                            className="input"
+                                            value={config.twitterToken}
+                                            placeholder="Leave empty to use server env var"
+                                            onChange={handleChange}
+                                        />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: "1rem" }}>
+                                        <label className="label">Twitter User ID (Optional)</label>
+                                        <input
+                                            type="text"
+                                            name="twitterUserId"
+                                            className="input"
+                                            value={config.twitterUserId}
+                                            placeholder="Twitter user/company ID"
+                                            onChange={handleChange}
+                                        />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: "0" }}>
                                         <label className="label">Target Subreddit</label>
                                         <input
                                             type="text"
