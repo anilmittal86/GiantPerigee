@@ -7,10 +7,12 @@ export default function Configuration({ onGenerate }) {
         geminiKey: "",
         linkedinToken: "",
         linkedinUrn: "",
-        twitterApiKey: "",
-        twitterApiSecret: "",
-        twitterAccessToken: "",
-        twitterAccessSecret: "",
+        // Twitter API credentials (only needed for paid Twitter API tier - $100/month)
+        // For now, Twitter sharing is manual (similar to Reddit)
+        // twitterApiKey: "",
+        // twitterApiSecret: "",
+        // twitterAccessToken: "",
+        // twitterAccessSecret: "",
         subreddit: "AEO_AkuparaAI",
         postType: "mixed",
         productInfo: "",
@@ -51,10 +53,7 @@ export default function Configuration({ onGenerate }) {
             productInfo: config.productInfo,
             linkedinToken: config.linkedinToken,
             linkedinUrn: config.linkedinUrn,
-            twitterApiKey: config.twitterApiKey,
-            twitterApiSecret: config.twitterApiSecret,
-            twitterAccessToken: config.twitterAccessToken,
-            twitterAccessSecret: config.twitterAccessSecret,
+            // Twitter credentials not needed for manual sharing
             subreddit: config.subreddit
         });
         setIsOpen(false); // Collapse after generating
@@ -128,50 +127,6 @@ export default function Configuration({ onGenerate }) {
                                             className="input"
                                             value={config.linkedinUrn}
                                             placeholder="urn:li:organization:..."
-                                            onChange={handleChange}
-                                        />
-                                    </div>
-                                    <div className="form-group" style={{ marginBottom: "1rem" }}>
-                                        <label className="label">Twitter API Key (Consumer Key)</label>
-                                        <input
-                                            type="password"
-                                            name="twitterApiKey"
-                                            className="input"
-                                            value={config.twitterApiKey}
-                                            placeholder="Leave empty to use server env var"
-                                            onChange={handleChange}
-                                        />
-                                    </div>
-                                    <div className="form-group" style={{ marginBottom: "1rem" }}>
-                                        <label className="label">Twitter API Secret (Consumer Secret)</label>
-                                        <input
-                                            type="password"
-                                            name="twitterApiSecret"
-                                            className="input"
-                                            value={config.twitterApiSecret}
-                                            placeholder="Leave empty to use server env var"
-                                            onChange={handleChange}
-                                        />
-                                    </div>
-                                    <div className="form-group" style={{ marginBottom: "1rem" }}>
-                                        <label className="label">Twitter Access Token</label>
-                                        <input
-                                            type="password"
-                                            name="twitterAccessToken"
-                                            className="input"
-                                            value={config.twitterAccessToken}
-                                            placeholder="Leave empty to use server env var"
-                                            onChange={handleChange}
-                                        />
-                                    </div>
-                                    <div className="form-group" style={{ marginBottom: "1rem" }}>
-                                        <label className="label">Twitter Access Token Secret</label>
-                                        <input
-                                            type="password"
-                                            name="twitterAccessSecret"
-                                            className="input"
-                                            value={config.twitterAccessSecret}
-                                            placeholder="Leave empty to use server env var"
                                             onChange={handleChange}
                                         />
                                     </div>

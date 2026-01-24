@@ -65,31 +65,47 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
         window.open(url, '_blank');
     };
 
-    const handleTwitterPost = async (thread, index) => {
-        setPostingIndex(index);
-        setPostResult(null);
-
-        try {
-            const res = await axios.post("/api/post-twitter", {
-                thread: thread,
-                api_key: configData.twitterApiKey,
-                api_secret: configData.twitterApiSecret,
-                access_token: configData.twitterAccessToken,
-                access_secret: configData.twitterAccessSecret
-            });
-
-            if (res.data.success) {
-                setPostResult({ type: "success", msg: res.data.message, link: res.data.link });
-            }
-        } catch (err) {
-            console.error(err);
-            const errorMsg = err.response?.data?.error || err.message || "Failed to post to Twitter.";
-            const errorDetails = err.response?.data?.details ? JSON.stringify(err.response.data.details) : "";
-            setPostResult({ type: "error", msg: `${errorMsg} ${errorDetails}` });
-        } finally {
-            setPostingIndex(null);
-        }
+    const handleTwitterShare = (thread) => {
+        // Open Twitter compose page
+        window.open('https://twitter.com/compose/tweet', '_blank');
     };
+
+    const handleCopyThread = (thread) => {
+        // Format thread with tweet numbers for easy copying
+        const formattedThread = thread.map((tweet, idx) => `${idx + 1}/${thread.length}\n${tweet}`).join('\n\n---\n\n');
+
+        navigator.clipboard.writeText(formattedThread).then(() => {
+            alert(`Thread copied to clipboard!\n\nPaste each tweet manually on Twitter.\nThe thread has ${thread.length} tweets.`);
+        }).catch(err => {
+            console.error("Failed to copy: ", err);
+            alert("Failed to copy thread. Please try again.");
+        });
+    };
+
+    // Keep for future paid tier support
+    // const handleTwitterPost = async (thread, index) => {
+    //     setPostingIndex(index);
+    //     setPostResult(null);
+    //     try {
+    //         const res = await axios.post("/api/post-twitter", {
+    //             thread: thread,
+    //             api_key: configData.twitterApiKey,
+    //             api_secret: configData.twitterApiSecret,
+    //             access_token: configData.twitterAccessToken,
+    //             access_secret: configData.twitterAccessSecret
+    //         });
+    //         if (res.data.success) {
+    //             setPostResult({ type: "success", msg: res.data.message, link: res.data.link });
+    //         }
+    //     } catch (err) {
+    //         console.error(err);
+    //         const errorMsg = err.response?.data?.error || err.message || "Failed to post to Twitter.";
+    //         const errorDetails = err.response?.data?.details ? JSON.stringify(err.response.data.details) : "";
+    //         setPostResult({ type: "error", msg: `${errorMsg} ${errorDetails}` });
+    //     } finally {
+    //         setPostingIndex(null);
+    //     }
+    // };
 
     const handleCopy = (text) => {
         navigator.clipboard.writeText(text).then(() => {
@@ -172,7 +188,7 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                 </div>
             </div>
 
-            {postResult && (activeTab === "linkedin" || activeTab === "twitter") && (
+            {postResult && activeTab === "linkedin" && (
                 <div style={{
                     padding: "1rem",
                     marginBottom: "1rem",
@@ -281,13 +297,20 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                                 {postingIndex === idx ? "Posting..." : "Post to LinkedIn"}
                             </button>
                         ) : activeTab === "twitter" ? (
-                            <button
-                                className="btn btn-secondary"
-                                onClick={() => handleTwitterPost(postObj.thread, idx)}
-                                disabled={postingIndex !== null || (postObj.thread || []).some(t => t.length > 280)}
-                            >
-                                {postingIndex === idx ? "Posting..." : "Post to Twitter"}
-                            </button>
+                            <div style={{ display: "flex", gap: "0.5rem" }}>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => handleCopyThread(postObj.thread)}
+                                >
+                                    Copy Thread
+                                </button>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => handleTwitterShare(postObj.thread)}
+                                >
+                                    Open Twitter
+                                </button>
+                            </div>
                         ) : (
                             <div style={{ display: "flex", gap: "0.5rem" }}>
                                 <button
