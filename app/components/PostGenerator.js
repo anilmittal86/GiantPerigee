@@ -72,7 +72,10 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
         try {
             const res = await axios.post("/api/post-twitter", {
                 thread: thread,
-                access_token: configData.twitterToken
+                api_key: configData.twitterApiKey,
+                api_secret: configData.twitterApiSecret,
+                access_token: configData.twitterAccessToken,
+                access_secret: configData.twitterAccessSecret
             });
 
             if (res.data.success) {

@@ -1,28 +1,60 @@
-import axios from "axios";
+import { TwitterApi } from "twitter-api-v2";
 import { NextResponse } from "next/server";
 
 export async function POST(req) {
     try {
-        const { thread, access_token: clientToken } = await req.json();
+        const {
+            thread,
+            api_key: clientApiKey,
+            api_secret: clientApiSecret,
+            access_token: clientAccessToken,
+            access_secret: clientAccessSecret
+        } = await req.json();
 
-        let access_token = clientToken;
+        // Use client credentials or fallback to server-side env vars
+        const apiKey = clientApiKey || process.env.TWITTER_API_KEY;
+        const apiSecret = clientApiSecret || process.env.TWITTER_API_SECRET;
+        const accessToken = clientAccessToken || process.env.TWITTER_ACCESS_TOKEN;
+        const accessSecret = clientAccessSecret || process.env.TWITTER_ACCESS_SECRET;
 
-        // Fallback to server-side env var if not provided by client
-        if (!access_token) {
-            access_token = process.env.TWITTER_BEARER_TOKEN;
-        }
-
-        // Sanitize inputs
-        const cleanToken = access_token?.trim();
-
-        if (!cleanToken || !thread || !Array.isArray(thread) || thread.length === 0) {
+        // Validate required credentials
+        if (!apiKey || !apiSecret || !accessToken || !accessSecret) {
             return NextResponse.json(
-                { error: "Missing required fields (token, thread)" },
+                { error: "Missing Twitter OAuth 1.0a credentials. Required: API Key, API Secret, Access Token, Access Token Secret" },
                 { status: 400 }
             );
         }
 
+        // Validate thread
+        if (!thread || !Array.isArray(thread) || thread.length === 0) {
+            return NextResponse.json(
+                { error: "Thread must be a non-empty array of tweets" },
+                { status: 400 }
+            );
+        }
+
+        // Validate tweet lengths
+        for (let i = 0; i < thread.length; i++) {
+            if (thread[i].length > 280) {
+                return NextResponse.json(
+                    {
+                        error: `Tweet ${i + 1} exceeds 280 characters (${thread[i].length} chars)`,
+                        tweet: thread[i]
+                    },
+                    { status: 400 }
+                );
+            }
+        }
+
         console.log(`Posting Twitter thread with ${thread.length} tweets...`);
+
+        // Initialize Twitter client with OAuth 1.0a credentials
+        const client = new TwitterApi({
+            appKey: apiKey,
+            appSecret: apiSecret,
+            accessToken: accessToken,
+            accessSecret: accessSecret,
+        });
 
         let previousTweetId = null;
         const tweetIds = [];
@@ -31,84 +63,66 @@ export async function POST(req) {
         for (let i = 0; i < thread.length; i++) {
             const tweetText = thread[i];
 
-            // Validate tweet length (280 characters max)
-            if (tweetText.length > 280) {
-                return NextResponse.json(
-                    {
-                        error: `Tweet ${i + 1} exceeds 280 characters (${tweetText.length} chars)`,
-                        tweet: tweetText
-                    },
-                    { status: 400 }
-                );
-            }
+            console.log(`Posting tweet ${i + 1}/${thread.length}:`, tweetText.substring(0, 50) + "...");
 
-            const body = {
+            const tweetOptions = {
                 text: tweetText
             };
 
             // If not the first tweet, add reply parameters to create a thread
             if (previousTweetId) {
-                body.reply = {
+                tweetOptions.reply = {
                     in_reply_to_tweet_id: previousTweetId
                 };
             }
 
-            console.log(`Posting tweet ${i + 1}/${thread.length}:`, tweetText.substring(0, 50) + "...");
-
-            const response = await axios.post(
-                "https://api.twitter.com/2/tweets",
-                body,
-                {
-                    headers: {
-                        Authorization: `Bearer ${cleanToken}`,
-                        "Content-Type": "application/json",
-                    },
-                }
-            );
-
-            const tweetId = response.data.data.id;
+            const tweet = await client.v2.tweet(tweetOptions);
+            const tweetId = tweet.data.id;
             tweetIds.push(tweetId);
             previousTweetId = tweetId;
 
             console.log(`Tweet ${i + 1} posted successfully: ${tweetId}`);
         }
 
-        // Return the URL of the first tweet in the thread
+        // Get authenticated user info to construct proper URL
+        let username = "twitter";
+        try {
+            const userInfo = await client.v2.me();
+            username = userInfo.data.username;
+        } catch (e) {
+            console.warn("Could not fetch username:", e.message);
+        }
+
         const firstTweetId = tweetIds[0];
 
-        // Note: We need the username to construct the full URL
-        // For now, we'll return the tweet ID and a generic URL structure
-        // The username can be fetched from Twitter API if needed
         return NextResponse.json({
             success: true,
             tweetIds: tweetIds,
             threadId: firstTweetId,
-            // Generic link format - will need username to complete
-            link: `https://twitter.com/i/web/status/${firstTweetId}`,
+            link: `https://twitter.com/${username}/status/${firstTweetId}`,
             message: `Thread posted successfully with ${thread.length} tweets`
         });
 
     } catch (error) {
-        console.error("Twitter Post Error:", error.response?.data || error.message);
+        console.error("Twitter Post Error:", error);
 
-        let errorMsg = error.response?.data?.detail || error.response?.data?.title || "Failed to post to Twitter";
+        let errorMsg = error.message || "Failed to post to Twitter";
 
-        // Specific hint for authentication errors
-        if (error.response?.status === 401) {
-            errorMsg = "Authentication Failed. Ensure your Twitter Bearer Token is valid and has write permissions.";
-        }
-
-        // Specific hint for forbidden errors
-        if (error.response?.status === 403) {
-            errorMsg = "Permission Denied. Ensure your Twitter API access includes tweet creation permissions (OAuth 2.0 with tweet.write scope).";
+        // Check for specific Twitter API errors
+        if (error.code === 403) {
+            errorMsg = "Authentication Failed. Please verify your Twitter API credentials (API Key, API Secret, Access Token, Access Token Secret).";
+        } else if (error.code === 401) {
+            errorMsg = "Invalid credentials. Ensure your Access Token and Access Token Secret are correct and have write permissions.";
+        } else if (error.data) {
+            errorMsg = error.data.detail || error.data.title || errorMsg;
         }
 
         return NextResponse.json(
             {
                 error: errorMsg,
-                details: error.response?.data,
+                details: error.data || error.message,
             },
-            { status: error.response?.status || 500 }
+            { status: error.code || 500 }
         );
     }
 }
