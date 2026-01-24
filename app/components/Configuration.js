@@ -143,18 +143,18 @@ export default function Configuration({ onGenerate }) {
                                 <label className="label">Post Type</label>
                                 <div className="pill-container">
                                     {[
-                                        { id: 'mixed', label: 'Mixed', icon: '✨' },
-                                        { id: 'research', label: 'Deep Dive', icon: '🧠' },
-                                        { id: 'feature', label: 'Feature', icon: '🚀' },
-                                        { id: 'pun', label: 'Humor', icon: '😂' },
-                                        { id: 'question', label: 'Question', icon: '🤔' }
+                                        { id: 'mixed', label: 'Mixed', icon: '🎯' },
+                                        { id: 'research', label: 'Deep Dive', icon: '📊' },
+                                        { id: 'feature', label: 'Feature', icon: '⚡' },
+                                        { id: 'pun', label: 'Humor', icon: '😊' },
+                                        { id: 'question', label: 'Question', icon: '❓' }
                                     ].map(type => (
                                         <button
                                             key={type.id}
                                             className={`pill-btn ${config.postType === type.id ? 'active' : ''}`}
                                             onClick={() => handleChange({ target: { name: 'postType', value: type.id } })}
                                         >
-                                            <span style={{ fontSize: "1rem" }}>{type.icon}</span>
+                                            <span className="emoji" style={{ fontSize: "1.1rem" }}>{type.icon}</span>
                                             {type.label}
                                         </button>
                                     ))}

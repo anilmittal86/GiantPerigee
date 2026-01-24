@@ -90,15 +90,16 @@ p {
 }
 
 .navbar {
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-light);
   position: sticky;
   top: 0;
-  z-index: 50;
-  padding: 1.25rem 0;
+  z-index: 100;
+  padding: 1rem 0;
   transition: all 0.3s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .navbar-inner {
@@ -120,9 +121,9 @@ p {
 
 .main-content {
   max-width: 1200px;
-  margin: var(--spacing-2xl) auto;
+  margin: 0 auto;
   width: 100%;
-  padding: 0 2rem;
+  padding: 2rem 2rem;
   flex: 1;
 }
 
@@ -312,6 +313,8 @@ p {
   font-style: normal;
   font-size: 1.2em;
   line-height: 1;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 /* Smooth scrolling for better UX */
