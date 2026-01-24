@@ -77,10 +77,9 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
         const firstTweet = thread[0] || '';
 
         navigator.clipboard.writeText(firstTweet).then(() => {
-            alert(`First tweet copied to clipboard!\n\nClick "Share on Twitter" to open Twitter with this tweet pre-filled.\nThen add the remaining ${thread.length - 1} tweets as replies.`);
+            // Silent copy - no alert needed
         }).catch(err => {
             console.error("Failed to copy: ", err);
-            alert("Failed to copy tweet. Please try again.");
         });
     };
 
