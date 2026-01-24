@@ -11,19 +11,21 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
     // Store posts for each platform
     const [posts, setPosts] = useState({
         linkedin: [],
-        reddit: []
+        reddit: [],
+        twitter: []
     });
 
     useEffect(() => {
         if (generatedPosts) {
             // Handle new object structure or legacy array
-            let newPosts = { linkedin: [], reddit: [] };
+            let newPosts = { linkedin: [], reddit: [], twitter: [] };
 
             if (Array.isArray(generatedPosts)) {
                 newPosts.linkedin = generatedPosts;
             } else {
                 newPosts.linkedin = generatedPosts.linkedin || [];
                 newPosts.reddit = generatedPosts.reddit || [];
+                newPosts.twitter = generatedPosts.twitter || [];
             }
 
             setPosts(newPosts);
@@ -63,6 +65,49 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
         window.open(url, '_blank');
     };
 
+    const handleTwitterShare = (thread) => {
+        // Open Twitter with first tweet pre-filled (similar to Reddit workflow)
+        const firstTweet = thread[0] || '';
+        const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(firstTweet)}`;
+        window.open(url, '_blank');
+    };
+
+    const handleCopyFirstTweet = (thread) => {
+        // Copy only the first tweet for easy pasting
+        const firstTweet = thread[0] || '';
+
+        navigator.clipboard.writeText(firstTweet).then(() => {
+            // Silent copy - no alert needed
+        }).catch(err => {
+            console.error("Failed to copy: ", err);
+        });
+    };
+
+    // Keep for future paid tier support
+    // const handleTwitterPost = async (thread, index) => {
+    //     setPostingIndex(index);
+    //     setPostResult(null);
+    //     try {
+    //         const res = await axios.post("/api/post-twitter", {
+    //             thread: thread,
+    //             api_key: configData.twitterApiKey,
+    //             api_secret: configData.twitterApiSecret,
+    //             access_token: configData.twitterAccessToken,
+    //             access_secret: configData.twitterAccessSecret
+    //         });
+    //         if (res.data.success) {
+    //             setPostResult({ type: "success", msg: res.data.message, link: res.data.link });
+    //         }
+    //     } catch (err) {
+    //         console.error(err);
+    //         const errorMsg = err.response?.data?.error || err.message || "Failed to post to Twitter.";
+    //         const errorDetails = err.response?.data?.details ? JSON.stringify(err.response.data.details) : "";
+    //         setPostResult({ type: "error", msg: `${errorMsg} ${errorDetails}` });
+    //     } finally {
+    //         setPostingIndex(null);
+    //     }
+    // };
+
     const handleCopy = (text) => {
         navigator.clipboard.writeText(text).then(() => {
             alert("Content copied to clipboard!");
@@ -85,6 +130,16 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
         setPosts(newPosts);
     };
 
+    const handleThreadTweetChange = (threadIdx, tweetIdx, val) => {
+        const newPosts = { ...posts };
+        const list = [...newPosts.twitter];
+        const thread = [...list[threadIdx].thread];
+        thread[tweetIdx] = val;
+        list[threadIdx] = { ...list[threadIdx], thread };
+        newPosts.twitter = list;
+        setPosts(newPosts);
+    };
+
     if (loading) {
         return (
             <div style={{ textAlign: "center", padding: "4rem" }}>
@@ -95,7 +150,7 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
     }
 
     // Check if we have any posts at all
-    const hasPosts = posts.linkedin.length > 0 || posts.reddit.length > 0;
+    const hasPosts = posts.linkedin.length > 0 || posts.reddit.length > 0 || posts.twitter.length > 0;
 
     if (!hasPosts) {
         return (
@@ -125,6 +180,12 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                     >
                         Reddit
                     </button>
+                    <button
+                        className={`pill-btn ${activeTab === 'twitter' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('twitter')}
+                    >
+                        Twitter
+                    </button>
                 </div>
             </div>
 
@@ -146,7 +207,7 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                 {currentPosts.map((postObj, idx) => (
                     <div key={idx} className="card" style={{ position: "relative" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                            <div className={`badge ${activeTab === 'reddit' ? 'badge-orange' : 'badge-blue'}`}>
+                            <div className={`badge ${activeTab === 'reddit' ? 'badge-orange' : activeTab === 'twitter' ? 'badge-blue' : 'badge-blue'}`}>
                                 Option {idx + 1}
                             </div>
                             {postObj.score && (
@@ -171,24 +232,62 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                             />
                         )}
 
-                        <textarea
-                            value={postObj.content || ""}
-                            onChange={(e) => handleContentChange(e.target.value, idx, "content")}
-                            style={{
-                                width: "100%",
-                                minHeight: "200px",
-                                background: "var(--background)",
-                                color: "var(--text-main)",
-                                border: "1px solid var(--border)",
-                                borderRadius: "4px",
-                                padding: "0.5rem",
-                                marginBottom: "1rem",
-                                resize: "vertical",
-                                fontFamily: "inherit",
-                                fontSize: "1.1rem",
-                                lineHeight: "1.6"
-                            }}
-                        />
+                        {activeTab === "twitter" ? (
+                            <div style={{ marginBottom: "1rem" }}>
+                                <div style={{ marginBottom: "0.5rem", color: "var(--text-dim)", fontSize: "0.9rem" }}>
+                                    Thread ({postObj.thread?.length || 0} tweets)
+                                </div>
+                                {(postObj.thread || []).map((tweet, tweetIdx) => (
+                                    <div key={tweetIdx} style={{ marginBottom: "0.75rem" }}>
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+                                            <span style={{ fontSize: "0.85rem", color: "var(--text-dim)" }}>Tweet {tweetIdx + 1}</span>
+                                            <span style={{
+                                                fontSize: "0.85rem",
+                                                color: tweet.length > 280 ? "#ff6b6b" : "var(--text-dim)"
+                                            }}>
+                                                {tweet.length}/280
+                                            </span>
+                                        </div>
+                                        <textarea
+                                            value={tweet}
+                                            onChange={(e) => handleThreadTweetChange(idx, tweetIdx, e.target.value)}
+                                            style={{
+                                                width: "100%",
+                                                minHeight: "80px",
+                                                background: "var(--background)",
+                                                color: "var(--text-main)",
+                                                border: `1px solid ${tweet.length > 280 ? "#ff6b6b" : "var(--border)"}`,
+                                                borderRadius: "4px",
+                                                padding: "0.5rem",
+                                                resize: "vertical",
+                                                fontFamily: "inherit",
+                                                fontSize: "0.95rem",
+                                                lineHeight: "1.4"
+                                            }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <textarea
+                                value={postObj.content || ""}
+                                onChange={(e) => handleContentChange(e.target.value, idx, "content")}
+                                style={{
+                                    width: "100%",
+                                    minHeight: "200px",
+                                    background: "var(--background)",
+                                    color: "var(--text-main)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: "4px",
+                                    padding: "0.5rem",
+                                    marginBottom: "1rem",
+                                    resize: "vertical",
+                                    fontFamily: "inherit",
+                                    fontSize: "1.1rem",
+                                    lineHeight: "1.6"
+                                }}
+                            />
+                        )}
 
                         {activeTab === "linkedin" ? (
                             <button
@@ -198,6 +297,21 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                             >
                                 {postingIndex === idx ? "Posting..." : "Post to LinkedIn"}
                             </button>
+                        ) : activeTab === "twitter" ? (
+                            <div style={{ display: "flex", gap: "0.5rem" }}>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => handleCopyFirstTweet(postObj.thread)}
+                                >
+                                    Copy Content
+                                </button>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => handleTwitterShare(postObj.thread)}
+                                >
+                                    Share on Twitter
+                                </button>
+                            </div>
                         ) : (
                             <div style={{ display: "flex", gap: "0.5rem" }}>
                                 <button
@@ -220,7 +334,7 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
 
             {currentPosts.length === 0 && (
                 <div style={{ textAlign: "center", padding: "2rem", color: "var(--text-dim)" }}>
-                    No generated posts found for {activeTab === "linkedin" ? "LinkedIn" : "Reddit"}.
+                    No generated posts found for {activeTab === "linkedin" ? "LinkedIn" : activeTab === "twitter" ? "Twitter" : "Reddit"}.
                 </div>
             )}
         </div>

@@ -7,6 +7,12 @@ export default function Configuration({ onGenerate }) {
         geminiKey: "",
         linkedinToken: "",
         linkedinUrn: "",
+        // Twitter API credentials (only needed for paid Twitter API tier - $100/month)
+        // For now, Twitter sharing is manual (similar to Reddit)
+        // twitterApiKey: "",
+        // twitterApiSecret: "",
+        // twitterAccessToken: "",
+        // twitterAccessSecret: "",
         subreddit: "AEO_AkuparaAI",
         postType: "mixed",
         productInfo: "",
@@ -47,6 +53,7 @@ export default function Configuration({ onGenerate }) {
             productInfo: config.productInfo,
             linkedinToken: config.linkedinToken,
             linkedinUrn: config.linkedinUrn,
+            // Twitter credentials not needed for manual sharing
             subreddit: config.subreddit
         });
         setIsOpen(false); // Collapse after generating
@@ -112,7 +119,7 @@ export default function Configuration({ onGenerate }) {
                                             onChange={handleChange}
                                         />
                                     </div>
-                                    <div className="form-group" style={{ marginBottom: "0" }}>
+                                    <div className="form-group" style={{ marginBottom: "1rem" }}>
                                         <label className="label">Company URN (ID)</label>
                                         <input
                                             type="text"
@@ -123,7 +130,7 @@ export default function Configuration({ onGenerate }) {
                                             onChange={handleChange}
                                         />
                                     </div>
-                                    <div className="form-group" style={{ marginTop: "1rem" }}>
+                                    <div className="form-group" style={{ marginBottom: "0" }}>
                                         <label className="label">Target Subreddit</label>
                                         <input
                                             type="text"
