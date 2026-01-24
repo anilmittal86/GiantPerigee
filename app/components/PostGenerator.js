@@ -66,19 +66,21 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
     };
 
     const handleTwitterShare = (thread) => {
-        // Open Twitter compose page
-        window.open('https://twitter.com/compose/tweet', '_blank');
+        // Open Twitter with first tweet pre-filled (similar to Reddit workflow)
+        const firstTweet = thread[0] || '';
+        const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(firstTweet)}`;
+        window.open(url, '_blank');
     };
 
-    const handleCopyThread = (thread) => {
-        // Format thread with tweet numbers for easy copying
-        const formattedThread = thread.map((tweet, idx) => `${idx + 1}/${thread.length}\n${tweet}`).join('\n\n---\n\n');
+    const handleCopyFirstTweet = (thread) => {
+        // Copy only the first tweet for easy pasting
+        const firstTweet = thread[0] || '';
 
-        navigator.clipboard.writeText(formattedThread).then(() => {
-            alert(`Thread copied to clipboard!\n\nPaste each tweet manually on Twitter.\nThe thread has ${thread.length} tweets.`);
+        navigator.clipboard.writeText(firstTweet).then(() => {
+            alert(`First tweet copied to clipboard!\n\nClick "Share on Twitter" to open Twitter with this tweet pre-filled.\nThen add the remaining ${thread.length - 1} tweets as replies.`);
         }).catch(err => {
             console.error("Failed to copy: ", err);
-            alert("Failed to copy thread. Please try again.");
+            alert("Failed to copy tweet. Please try again.");
         });
     };
 
@@ -300,15 +302,15 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                             <div style={{ display: "flex", gap: "0.5rem" }}>
                                 <button
                                     className="btn btn-secondary"
-                                    onClick={() => handleCopyThread(postObj.thread)}
+                                    onClick={() => handleCopyFirstTweet(postObj.thread)}
                                 >
-                                    Copy Thread
+                                    Copy Content
                                 </button>
                                 <button
                                     className="btn btn-secondary"
                                     onClick={() => handleTwitterShare(postObj.thread)}
                                 >
-                                    Open Twitter
+                                    Share on Twitter
                                 </button>
                             </div>
                         ) : (
