@@ -2,8 +2,9 @@
   /* Premium Color Palette */
   --background: #fafafa;
   --surface: #ffffff;
-  --primary: #000000;
-  --primary-hover: #2a2a2a;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #dbeafe;
   --text-main: #0a0a0a;
   --text-secondary: #666666;
   --text-dim: #999999;
@@ -17,6 +18,7 @@
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
   --shadow-md: 0 4px 12px 0 rgba(0, 0, 0, 0.05);
   --shadow-lg: 0 8px 24px 0 rgba(0, 0, 0, 0.08);
+  --shadow-primary: 0 4px 12px 0 rgba(37, 99, 235, 0.15);
 
   /* Spacing Scale */
   --spacing-xs: 0.5rem;
@@ -151,20 +153,20 @@ p {
 .badge {
   display: block;
   width: 100%;
-  padding: 0.875rem 1.25rem;
+  padding: 1rem 1.5rem;
   border-radius: var(--radius-md);
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font-size: 0.95rem;
+  font-weight: 700;
   text-transform: uppercase;
   margin-bottom: var(--spacing-lg);
-  letter-spacing: 0.075em;
+  letter-spacing: 0.05em;
   transition: all 0.2s ease;
 }
 
 .badge-blue {
-  background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
-  color: #0066cc;
-  border-left: 3px solid #0066cc;
+  background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
+  color: var(--primary);
+  border-left: 4px solid var(--primary);
   box-shadow: var(--shadow-sm);
 }
 
@@ -236,7 +238,7 @@ p {
 .btn:hover {
   background: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-primary);
 }
 
 .btn:active {
