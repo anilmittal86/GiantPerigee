@@ -68,7 +68,7 @@ export async function POST(req) {
         // User has access to gemini-2.0-flash
         console.log("Initializing Gemini model...");
         const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash",
+            model: "gemini-3-flash-preview",
             tools: [{ googleSearch: {} }],
         });
 
