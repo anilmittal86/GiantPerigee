@@ -68,67 +68,82 @@ export async function POST(req) {
         // User has access to gemini-2.0-flash
         console.log("Initializing Gemini model...");
         const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash-lite",
+            model: "gemini-2.5-flash",
             tools: [{ googleSearch: {} }],
         });
-
-
-
 
 
         let taskInstruction = "";
 
         switch (post_type) {
             case "research":
-                taskInstruction = `Goal: Write 3 Deep Dive / Research-backed posts about the Context.
-                Structure logic:
-                1. Hook: Startling fact/trend directly related to the Context.
-                2. Data: Explain "why" with authority.
-                3. Application: How this applies to the reader.
-                4. CTA: Thought-provoking question.
-                Tone: Authoritative, academic but accessible.`;
+                taskInstruction = `Goal: Write 3 Deep Dive / Research-backed LinkedIn posts about the Context.
+
+                Each post MUST follow this structure:
+                1. Hook (line 1): A startling statistic, counterintuitive fact, or bold claim that stops the scroll. This line alone must make someone want to read more.
+                2. Tension: Why this matters NOW. Create urgency with a "the old way is broken" angle.
+                3. Insight: 2-3 short paragraphs with data, research, or expert-level analysis. Use specific numbers when possible.
+                4. Takeaway: One clear, actionable lesson the reader walks away with.
+                5. CTA: End with a thought-provoking question that invites comments.
+
+                Tone: Authoritative but accessible. Write like a senior industry analyst sharing insider knowledge, not an academic paper.`;
                 break;
             case "pun":
-                taskInstruction = `Goal: Write 3 Short, Punchy, Humorous posts about the Context.
-                Structure logic:
-                1. Set-up: Relatable situation regarding the Context.
-                2. Punchline: Witty observation.
-                3. CTA: Lighthearted prompt.
-                Tone: Witty, clever, dad joke style.`;
+                taskInstruction = `Goal: Write 3 Short, Punchy, Humorous LinkedIn posts about the Context.
+
+                Each post MUST follow this structure:
+                1. Hook (line 1): A relatable "you know this feeling" setup OR a bold statement that makes people nod.
+                2. Build: 2-3 short lines that build the relatable scenario.
+                3. Punchline: The witty twist, observation, or "hard truth" delivered with humor.
+                4. CTA: A lighthearted question or "Tag someone who..." prompt.
+
+                Tone: Witty, self-aware, slightly irreverent. Think clever LinkedIn satire, NOT corporate cringe. The humor should make people think AND smile.`;
                 break;
             case "feature":
-                taskInstruction = `Goal: Write 3 Product/Feature Launch posts.
-                Structure logic:
-                1. Problem: What's broken in the user's specific Context?
-                2. Reveal: The new solution (Context).
-                3. Benefit: Specific outcome.
-                4. CTA: "Link in bio" or "Try it now".
-                Tone: Exciting, energetic.`;
+                taskInstruction = `Goal: Write 3 Product/Feature Launch LinkedIn posts about the Context.
+
+                Each post MUST follow this structure:
+                1. Hook (line 1): Name the painful problem your audience faces. Be specific, not generic.
+                2. Agitate: 2-3 lines showing you deeply understand the frustration (failed attempts, wasted time, etc.).
+                3. Reveal: Introduce the solution naturally - not as a sales pitch but as "here's what changed."
+                4. Proof: One specific benefit with a concrete outcome (saved X hours, increased Y%, etc.).
+                5. CTA: Clear next step - "Link in comments" or "DM me for access."
+
+                Tone: Exciting but authentic. You're sharing something genuinely useful, not selling. Focus on transformation, not features.`;
                 break;
             case "question":
-                taskInstruction = `Goal: Write 3 Engaging Questions strictly about the Context.
-                Structure logic:
-                1. Question: A specific, thought-provoking question directly regarding the details in the Context.
-                2. Context: Briefly explain the nuance or tension.
-                3. Ask: "What do you think?"
-                Tone: Curiosity-driven, professional, conversational.`;
+                taskInstruction = `Goal: Write 3 Engaging, Discussion-Driving LinkedIn posts about the Context.
+
+                Each post MUST follow this structure:
+                1. Hook (line 1): A provocative question OR a bold statement that challenges conventional wisdom.
+                2. Context: 3-4 short paragraphs that set up the tension. Present both sides or reveal a surprising angle.
+                3. Personal take: Share a brief, authentic perspective (1-2 lines).
+                4. Open question: End with a specific question that has no obvious right answer - this is what drives comments.
+
+                Tone: Curiosity-driven, intellectually honest. You're starting a real conversation, not fishing for engagement.`;
                 break;
             case "mixed":
             default:
-                taskInstruction = `Goal: Write 3 Opinionated, High-Impact posts about the Context.
-                Style: Assertive, Thought-Leader, "Hard Truth".
-                
-                Style Reference (Emulate this tone):
-                "Most brands are completely blind when it comes to their AI visibility. We spend millions on SEO, yet we have zero infrastructure for tracking ChatGPT. You can’t optimize what you can’t measure. Designing 'golden prompts' isn't just a fun exercise; it is the only way to audit your reality."
+                taskInstruction = `Goal: Write 3 Opinionated, High-Impact LinkedIn posts about the Context.
+                Style: Assertive thought-leader. Each post should take a clear stance.
 
-                Structure Types:
-                1. The Wake-Up Call: Call out a common mistake in the Context.
-                2. The Strategic Pivot: Why the old way is dead and the Context is the future.
-                3. The Unpopular Opinion: A controversial take on the Context.`;
+                Style Reference (Emulate this energy and structure):
+                "Most brands are completely blind when it comes to their AI visibility.
+
+                We spend millions on SEO, yet we have zero infrastructure for tracking ChatGPT.
+
+                You can't optimize what you can't measure.
+
+                Designing 'golden prompts' isn't just a fun exercise; it is the only way to audit your reality."
+
+                Each of the 3 posts should use a DIFFERENT angle:
+                1. The Wake-Up Call: Call out a common mistake or blind spot. Make the reader uncomfortable, then offer clarity.
+                2. The Strategic Pivot: Argue why the old way is dead. Present the Context as the inevitable future.
+                3. The Unpopular Opinion: Take a genuinely controversial stance on the Context. Back it up with logic.`;
                 break;
         }
 
-        const prompt = `Role: You are the Lead Content Strategist.
+        const prompt = `Role: You are an elite LinkedIn ghostwriter who has grown multiple accounts to 100K+ followers. You understand what makes content go viral on LinkedIn.
 
         Context (Product/Topic):
         ${product_info}
@@ -136,56 +151,55 @@ export async function POST(req) {
         Task:
         ${taskInstruction}
 
-        GLOBAL CONSTRAINTS & FORMATTING (CRITICAL):
-        1. **Strict Context Adherence**: Write ONLY about the specific details in the Context.
-        2. **Double Line Breaks**: You MUST use double line breaks (\\n\\n).
-        3. **No Labels**: Do NOT use structural labels (e.g. "Hook:", "Body:").
-        4. **Tone**: Human, professional, impactful.
-        5. **Hashtags**: Include relevant hashtags AT THE END (LinkedIn Only).
-        6. **Quantity**: generate exactly 3 High-Quality potential options for LinkedIn, 3 options for Reddit, AND 3 thread options for Twitter.
+        LINKEDIN FORMATTING RULES (CRITICAL - this is what separates viral posts from ignored ones):
+        1. **First line is EVERYTHING**: The hook must create curiosity, shock, or a "wait, what?" reaction. LinkedIn shows only ~2 lines before "see more" - your hook must earn that click.
+        2. **One idea per line**: Short sentences. One thought per paragraph. Walls of text get scrolled past.
+        3. **White space is your weapon**: Use double line breaks (\\n\\n) between EVERY paragraph. Dense text kills engagement on LinkedIn.
+        4. **Rhythm and pacing**: Alternate between short punchy lines (3-8 words) and slightly longer explanatory lines. This creates a reading "flow."
+        5. **NO structural labels**: Never write "Hook:", "Body:", "CTA:" or any labels. The structure should be invisible.
+        6. **Hashtags**: 3-5 relevant hashtags at the very end, separated by a blank line from the main content.
+        7. **Length**: 150-300 words per post. Long enough to deliver value, short enough to keep attention.
+        8. **Human voice**: Write like a real person sharing a genuine insight, NOT like a marketing AI. Use "I", share perspectives, be conversational.
 
-        PLATFORM SPECIFICS:
-        - **LinkedIn**: Professional, thought-leader style. Use hashtags.
-            - **image_keywords**: For each LinkedIn post, include an "image_keywords" array with exactly 2 concise Pexels stock photo search queries (2-4 words each) that would find a relevant, professional image. Be concrete and visual (e.g. "team collaboration office", "data analytics dashboard"). Avoid abstract concepts. Each post MUST have DIFFERENT keywords.
-        - **Reddit**: Conversational, community-focused, specific to the Subreddit "r/${subreddit}".
-            - **Title**: Required. Catchy, specific, no clickbait.
-            - **Body**: Informal, discussion-driven. NO HASHTAGS.
-        - **Twitter**: Engaging threads optimized for Twitter's format.
-            - **Thread Format**: Each option should be a complete thread (array of tweets).
+        IMAGE KEYWORDS (for LinkedIn posts only):
+        For each LinkedIn post, include an "image_keywords" field with exactly 2 search queries optimized for finding relevant stock photos on Pexels.
+        - Each query MUST be 2-4 words describing a CONCRETE, PHOTOGRAPHABLE scene (people, objects, settings).
+        - GOOD examples: "person typing laptop", "business team meeting", "smartphone analytics screen", "woman presenting whiteboard", "developer coding screen"
+        - BAD examples (too abstract, will return irrelevant photos): "innovation", "digital transformation", "AI concept", "growth mindset", "strategy"
+        - Think: "What photo would a magazine editor choose for this article?" The image should visually complement the post's theme.
+        - Each post MUST have DIFFERENT keywords from the other posts.
+
+        ADDITIONAL PLATFORM CONTENT:
+        Also generate 3 Reddit posts and 3 Twitter threads:
+
+        **Reddit** (for r/${subreddit}):
+            - **Title**: Catchy, specific, no clickbait.
+            - **Body**: Conversational, community-focused, discussion-driven. NO HASHTAGS. Write like a helpful community member, not a marketer.
+
+        **Twitter**:
+            - **Thread Format**: Each option = array of 3-6 tweets.
             - **Tweet Length**: Each tweet MUST be 280 characters or less.
-            - **Thread Structure**:
-                - Tweet 1: Strong hook that grabs attention
-                - Tweet 2-4: Break down the main points (numbered or flowing narrative)
-                - Last Tweet: CTA or thought-provoking conclusion
-            - **Style**: Conversational, punchy, use emojis sparingly for emphasis.
-            - **Hashtags**: 1-2 relevant hashtags only in the last tweet.
-            - Each thread should have 3-6 tweets total.
+            - **Tweet 1**: Strong hook. **Tweets 2-4**: Key points. **Last Tweet**: CTA + 1-2 hashtags.
+            - **Style**: Conversational, punchy, minimal emojis.
 
-        CRITICAL SCORING INSTRUCTION (The "Simon Cowell" Rule):
-        - **Score 6.0 - 7.5**: Good, professional, safe.
-        - **Score 7.6 - 8.9**: Great hook, strong value, "Scroll Stopper".
-        - **Score 9.0+**: RARE. Absolute viral perfection.
-        
-        Output Schema:
-        Return a JSON object with three keys "linkedin", "reddit", and "twitter":
+        SCORING (The "Simon Cowell" Rule - be brutally honest):
+        - **6.0-7.5**: Competent, professional, but forgettable. Would get a few likes.
+        - **7.6-8.9**: Strong hook, real value, "Scroll Stopper." Would get shares and saves.
+        - **9.0+**: RARE. Viral-quality. Only score this if it genuinely made you think "damn, that's good."
+
+        Output Schema (return ONLY valid JSON, no markdown wrapping):
         {
             "linkedin": [
-                { "content": "post 1 content...", "score": 7.2, "image_keywords": ["concrete visual query 1", "concrete visual query 2"] },
-                ...
+                { "content": "full post text here...", "score": 7.2, "image_keywords": ["person typing laptop", "business analytics screen"] },
+                { "content": "full post text here...", "score": 8.1, "image_keywords": ["team brainstorming office", "whiteboard strategy planning"] },
+                { "content": "full post text here...", "score": 7.9, "image_keywords": ["developer coding monitor", "startup workspace desk"] }
             ],
             "reddit": [
                 { "title": "Post Title", "content": "post body...", "score": 8.5 },
                 ...
             ],
             "twitter": [
-                {
-                    "thread": [
-                        "Tweet 1 text (max 280 chars)...",
-                        "Tweet 2 text (max 280 chars)...",
-                        "Tweet 3 text (max 280 chars)..."
-                    ],
-                    "score": 8.0
-                },
+                { "thread": ["Tweet 1...", "Tweet 2...", "Tweet 3..."], "score": 8.0 },
                 ...
             ]
         }`;
