@@ -40,37 +40,6 @@ async function searchPexelsImage(keywordSets) {
     return null;
 }
 
-async function generateAllImageKeywords(model, linkedinPosts) {
-    try {
-        const postSummaries = linkedinPosts.map((p, i) =>
-            `Post ${i + 1}:\n${p.content.substring(0, 300)}`
-        ).join('\n\n');
-
-        const keywordPrompt = `Given these ${linkedinPosts.length} LinkedIn posts, generate 2 concise Pexels stock photo search queries per post. Each query should be 2-4 words, concrete and visual (e.g. "team collaboration office", "data analytics dashboard"). Avoid abstract concepts. Each post MUST get DIFFERENT keywords.
-
-${postSummaries}
-
-Return ONLY a JSON array of arrays. Example for 3 posts: [["team brainstorming whiteboard", "business growth chart"], ["coding laptop desk", "software development team"], ["marketing analytics screen", "digital strategy meeting"]]`;
-
-        const result = await model.generateContent(keywordPrompt);
-        const text = result.response.text();
-
-        // Extract the outer JSON array
-        const startIdx = text.indexOf('[[');
-        const endIdx = text.lastIndexOf(']]');
-        if (startIdx !== -1 && endIdx !== -1) {
-            const allKeywords = JSON.parse(text.substring(startIdx, endIdx + 2));
-            if (Array.isArray(allKeywords)) {
-                console.log("Generated all image keywords:", allKeywords);
-                return allKeywords;
-            }
-        }
-    } catch (error) {
-        console.error("Image keyword generation error:", error);
-    }
-
-    return null;
-}
 
 export async function POST(req) {
     try {
@@ -99,8 +68,7 @@ export async function POST(req) {
         // User has access to gemini-2.0-flash
         console.log("Initializing Gemini model...");
         const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash",
-            // generationConfig: { responseMimeType: "application/json" } -- Removed for 2.5 search compatibility
+            model: "gemini-2.5-flash-lite",
             tools: [{ googleSearch: {} }],
         });
 
@@ -178,6 +146,7 @@ export async function POST(req) {
 
         PLATFORM SPECIFICS:
         - **LinkedIn**: Professional, thought-leader style. Use hashtags.
+            - **image_keywords**: For each LinkedIn post, include an "image_keywords" array with exactly 2 concise Pexels stock photo search queries (2-4 words each) that would find a relevant, professional image. Be concrete and visual (e.g. "team collaboration office", "data analytics dashboard"). Avoid abstract concepts. Each post MUST have DIFFERENT keywords.
         - **Reddit**: Conversational, community-focused, specific to the Subreddit "r/${subreddit}".
             - **Title**: Required. Catchy, specific, no clickbait.
             - **Body**: Informal, discussion-driven. NO HASHTAGS.
@@ -201,7 +170,7 @@ export async function POST(req) {
         Return a JSON object with three keys "linkedin", "reddit", and "twitter":
         {
             "linkedin": [
-                { "content": "post 1 content...", "score": 7.2 },
+                { "content": "post 1 content...", "score": 7.2, "image_keywords": ["concrete visual query 1", "concrete visual query 2"] },
                 ...
             ],
             "reddit": [
@@ -341,36 +310,32 @@ export async function POST(req) {
                 }
             }
 
-            // Add images to LinkedIn posts using AI-generated keywords (single Gemini call + parallel Pexels)
+            // Add images to LinkedIn posts using keywords from the main prompt (no extra API call)
             if (posts.linkedin && Array.isArray(posts.linkedin) && posts.linkedin.length > 0) {
-                console.log("Generating image keywords for all LinkedIn posts...");
+                console.log("Fetching Pexels images using prompt-generated keywords...");
 
-                const keywordModel = genAI.getGenerativeModel({
-                    model: "gemini-2.5-flash",
-                });
-
-                const allKeywords = await generateAllImageKeywords(keywordModel, posts.linkedin);
-
-                if (allKeywords && allKeywords.length > 0) {
-                    // Search Pexels for all posts in parallel
-                    const imagePromises = allKeywords.map(keywords =>
-                        Array.isArray(keywords) ? searchPexelsImage(keywords) : Promise.resolve(null)
-                    );
-                    const images = await Promise.all(imagePromises);
-
-                    const usedUrls = new Set();
-                    for (let i = 0; i < posts.linkedin.length; i++) {
-                        const image = images[i];
-                        if (image && !usedUrls.has(image.url)) {
-                            posts.linkedin[i].image = image;
-                            usedUrls.add(image.url);
-                            console.log(`Relevant image found for post ${i + 1}`);
-                        } else {
-                            console.log(`No unique relevant image for post ${i + 1}, posting without image`);
-                        }
+                // Search Pexels for all posts in parallel using keywords from the main response
+                const imagePromises = posts.linkedin.map(post => {
+                    const keywords = post.image_keywords;
+                    if (Array.isArray(keywords) && keywords.length > 0) {
+                        return searchPexelsImage(keywords);
                     }
-                } else {
-                    console.log("Could not generate image keywords, posts will go without images");
+                    return Promise.resolve(null);
+                });
+                const images = await Promise.all(imagePromises);
+
+                const usedUrls = new Set();
+                for (let i = 0; i < posts.linkedin.length; i++) {
+                    const image = images[i];
+                    if (image && !usedUrls.has(image.url)) {
+                        posts.linkedin[i].image = image;
+                        usedUrls.add(image.url);
+                        console.log(`Relevant image found for post ${i + 1}`);
+                    } else {
+                        console.log(`No relevant image for post ${i + 1}, posting without image`);
+                    }
+                    // Clean up - don't send keywords to frontend
+                    delete posts.linkedin[i].image_keywords;
                 }
             }
         }
