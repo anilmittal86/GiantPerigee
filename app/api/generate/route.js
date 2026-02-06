@@ -1,34 +1,68 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-async function searchPexelsImage(query) {
+async function searchPexelsImage(keywordSets) {
     const PEXELS_API_KEY = process.env.PEXELS_API_KEY || 'YOUR_PEXELS_API_KEY';
 
-    try {
-        const cleanQuery = query.replace(/#\w+/g, '').trim().substring(0, 100);
-        const searchTerms = cleanQuery.split(' ').slice(0, 3).join(' ');
+    // keywordSets is an array of search queries to try in order of relevance
+    // e.g. ["AI chatbot customer service", "customer support technology", "business automation"]
+    for (const query of keywordSets) {
+        try {
+            const cleanQuery = query.replace(/#\w+/g, '').trim().substring(0, 100);
 
-        const response = await fetch(
-            `https://api.pexels.com/v1/search?query=${encodeURIComponent(searchTerms)}&per_page=3&orientation=landscape`,
-            {
-                headers: {
-                    'Authorization': PEXELS_API_KEY
+            const response = await fetch(
+                `https://api.pexels.com/v1/search?query=${encodeURIComponent(cleanQuery)}&per_page=5&orientation=landscape`,
+                {
+                    headers: {
+                        'Authorization': PEXELS_API_KEY
+                    }
+                }
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.photos && data.photos.length > 0) {
+                    // Pick a random photo from top results for variety across posts
+                    const photo = data.photos[Math.floor(Math.random() * Math.min(data.photos.length, 3))];
+                    return {
+                        url: photo.src.large,
+                        photographer: photo.photographer,
+                        photographer_url: photo.photographer_url
+                    };
                 }
             }
-        );
+        } catch (error) {
+            console.error(`Pexels search error for query "${query}":`, error);
+        }
+    }
 
-        if (response.ok) {
-            const data = await response.json();
-            if (data.photos && data.photos.length > 0) {
-                return {
-                    url: data.photos[0].src.large,
-                    photographer: data.photos[0].photographer,
-                    photographer_url: data.photos[0].photographer_url
-                };
+    // No relevant image found from any keyword set
+    return null;
+}
+
+async function generateImageKeywords(model, postContent) {
+    try {
+        const keywordPrompt = `Given this LinkedIn post, generate 3 concise Pexels stock photo search queries that would find a visually relevant, professional image to accompany it. Each query should be 2-4 words, concrete and visual (e.g. "team collaboration office", "data analytics dashboard", "startup meeting"). Avoid abstract concepts that won't match stock photos.
+
+Post:
+${postContent.substring(0, 500)}
+
+Return ONLY a JSON array of 3 strings, nothing else. Example: ["team brainstorming whiteboard", "business growth chart", "modern office workspace"]`;
+
+        const result = await model.generateContent(keywordPrompt);
+        const text = result.response.text();
+
+        // Extract JSON array from response
+        const match = text.match(/\[[\s\S]*?\]/);
+        if (match) {
+            const keywords = JSON.parse(match[0]);
+            if (Array.isArray(keywords) && keywords.length > 0) {
+                console.log("Generated image keywords:", keywords);
+                return keywords;
             }
         }
     } catch (error) {
-        console.error("Pexels search error:", error);
+        console.error("Image keyword generation error:", error);
     }
 
     return null;
@@ -303,16 +337,46 @@ export async function POST(req) {
                 }
             }
 
-            // Add images to LinkedIn posts
+            // Add images to LinkedIn posts using AI-generated keywords per post
             if (posts.linkedin && Array.isArray(posts.linkedin)) {
-                console.log("Fetching images for LinkedIn posts...");
+                console.log("Generating image keywords and fetching images for LinkedIn posts...");
+
+                // Use a lightweight model call (no search tool needed) for keyword generation
+                const keywordModel = genAI.getGenerativeModel({
+                    model: "gemini-2.5-flash",
+                });
+
+                const usedImageUrls = new Set();
+
                 for (let i = 0; i < posts.linkedin.length; i++) {
                     const post = posts.linkedin[i];
-                    const searchQuery = product_info.substring(0, 100);
-                    const image = await searchPexelsImage(searchQuery);
-                    if (image) {
-                        posts.linkedin[i].image = image;
-                        console.log(`Image found for post ${i + 1}`);
+                    const keywords = await generateImageKeywords(keywordModel, post.content);
+
+                    if (keywords && keywords.length > 0) {
+                        // Try to find an image that hasn't been used by another post
+                        let image = null;
+                        let attempts = 0;
+                        const maxAttempts = 2;
+
+                        while (attempts < maxAttempts) {
+                            image = await searchPexelsImage(keywords);
+                            if (image && !usedImageUrls.has(image.url)) {
+                                break;
+                            }
+                            // If duplicate, shuffle keywords and retry
+                            keywords.reverse();
+                            attempts++;
+                        }
+
+                        if (image && !usedImageUrls.has(image.url)) {
+                            posts.linkedin[i].image = image;
+                            usedImageUrls.add(image.url);
+                            console.log(`Relevant image found for post ${i + 1}`);
+                        } else {
+                            console.log(`No unique relevant image for post ${i + 1}, posting without image`);
+                        }
+                    } else {
+                        console.log(`Could not generate keywords for post ${i + 1}, posting without image`);
                     }
                 }
             }
