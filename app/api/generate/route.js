@@ -1,18 +1,15 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-// Generate a custom AI image for a LinkedIn post using Nano Banana Pro
-async function generatePostImage(genAI, postContent) {
-    try {
-        const imageModel = genAI.getGenerativeModel({
-            model: "gemini-3-pro-image-preview",
-            generationConfig: {
-                responseModalities: ["TEXT", "IMAGE"],
-            },
-        });
+// Generate a custom AI image for a LinkedIn post using Nano Banana (free tier)
+// Fallback chain: gemini-2.5-flash-preview-image-generation → gemini-3-pro-image-preview
+const IMAGE_MODEL_CHAIN = [
+    "gemini-2.5-flash-preview-image-generation",  // Free tier: ~500 images/day
+    "gemini-3-pro-image-preview",                   // Paid only (Nano Banana Pro)
+];
 
-        // Create a focused image prompt from the post content
-        const imagePrompt = `Create a clean, professional, modern illustration suitable for a LinkedIn post by AkuparaAI (an AI visibility and marketing analytics platform). The image should be landscape orientation (16:9), minimalist, and use a professional color palette (blues, teals, whites).
+async function generatePostImage(genAI, postContent) {
+    const imagePrompt = `Create a clean, professional, modern illustration suitable for a LinkedIn post by AkuparaAI (an AI visibility and marketing analytics platform). The image should be landscape orientation (16:9), minimalist, and use a professional color palette (blues, teals, whites).
 
 The LinkedIn post is about:
 ${postContent.substring(0, 300)}
@@ -25,26 +22,45 @@ Style requirements:
 - NO faces or photorealistic people
 - Think: abstract data visualization, network graphs, dashboard mockups, digital marketing concepts`;
 
-        const result = await imageModel.generateContent(imagePrompt);
-        const response = result.response;
-        const parts = response.candidates?.[0]?.content?.parts || [];
+    for (const modelName of IMAGE_MODEL_CHAIN) {
+        try {
+            console.log(`Trying image model: ${modelName}...`);
+            const imageModel = genAI.getGenerativeModel({
+                model: modelName,
+                generationConfig: {
+                    responseModalities: ["TEXT", "IMAGE"],
+                },
+            });
 
-        for (const part of parts) {
-            if (part.inlineData) {
-                const mimeType = part.inlineData.mimeType || 'image/png';
-                const base64Data = part.inlineData.data;
-                const dataUrl = `data:${mimeType};base64,${base64Data}`;
-                console.log("AI image generated successfully");
-                return {
-                    url: dataUrl,
-                    photographer: null,
-                    photographer_url: null,
-                    isGenerated: true
-                };
+            const result = await imageModel.generateContent(imagePrompt);
+            const response = result.response;
+            const parts = response.candidates?.[0]?.content?.parts || [];
+
+            for (const part of parts) {
+                if (part.inlineData) {
+                    const mimeType = part.inlineData.mimeType || 'image/png';
+                    const base64Data = part.inlineData.data;
+                    const dataUrl = `data:${mimeType};base64,${base64Data}`;
+                    console.log(`AI image generated successfully with ${modelName}`);
+                    return {
+                        url: dataUrl,
+                        photographer: null,
+                        photographer_url: null,
+                        isGenerated: true
+                    };
+                }
             }
+        } catch (error) {
+            const isRateLimit = error.status === 429 ||
+                error.message?.includes('429') ||
+                error.message?.includes('RESOURCE_EXHAUSTED') ||
+                error.message?.includes('quota') ||
+                error.message?.includes('billing');
+            console.error(`Image model ${modelName} failed:`, error.message || error);
+            if (isRateLimit) continue; // Try next model
+            // For non-rate-limit errors (model not found, etc.), also try next
+            continue;
         }
-    } catch (error) {
-        console.error("AI image generation error:", error.message || error);
     }
     return null;
 }
