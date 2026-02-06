@@ -34,7 +34,7 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
         }
     }, [generatedPosts]);
 
-    const handlePost = async (content, index) => {
+    const handlePost = async (content, index, imageUrl) => {
         setPostingIndex(index);
         setPostResult(null);
 
@@ -42,7 +42,8 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
             const res = await axios.post("/api/post", {
                 post_content: content,
                 access_token: configData.linkedinToken,
-                urn: configData.linkedinUrn
+                urn: configData.linkedinUrn,
+                image_url: imageUrl
             });
 
             if (res.data.success) {
@@ -221,6 +222,33 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                             )}
                         </div>
 
+                        {activeTab === "linkedin" && postObj.image && (
+                            <div style={{ marginBottom: "1rem", borderRadius: "8px", overflow: "hidden", border: "1px solid var(--border)" }}>
+                                <img
+                                    src={postObj.image.url}
+                                    alt="Post visual"
+                                    style={{ width: "100%", height: "auto", display: "block" }}
+                                />
+                                {postObj.image.photographer && (
+                                    <div style={{
+                                        padding: "0.5rem",
+                                        fontSize: "0.75rem",
+                                        color: "var(--text-dim)",
+                                        background: "var(--background)"
+                                    }}>
+                                        Photo by <a
+                                            href={postObj.image.photographer_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ color: "var(--primary)" }}
+                                        >
+                                            {postObj.image.photographer}
+                                        </a> on Pexels
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {activeTab === "reddit" && (
                             <input
                                 type="text"
@@ -292,7 +320,7 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                         {activeTab === "linkedin" ? (
                             <button
                                 className="btn btn-secondary"
-                                onClick={() => handlePost(postObj.content, idx)}
+                                onClick={() => handlePost(postObj.content, idx, postObj.image?.url)}
                                 disabled={postingIndex !== null}
                             >
                                 {postingIndex === idx ? "Posting..." : "Post to LinkedIn"}

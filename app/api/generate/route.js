@@ -1,6 +1,39 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
+async function searchPexelsImage(query) {
+    const PEXELS_API_KEY = process.env.PEXELS_API_KEY || 'YOUR_PEXELS_API_KEY';
+
+    try {
+        const cleanQuery = query.replace(/#\w+/g, '').trim().substring(0, 100);
+        const searchTerms = cleanQuery.split(' ').slice(0, 3).join(' ');
+
+        const response = await fetch(
+            `https://api.pexels.com/v1/search?query=${encodeURIComponent(searchTerms)}&per_page=3&orientation=landscape`,
+            {
+                headers: {
+                    'Authorization': PEXELS_API_KEY
+                }
+            }
+        );
+
+        if (response.ok) {
+            const data = await response.json();
+            if (data.photos && data.photos.length > 0) {
+                return {
+                    url: data.photos[0].src.large,
+                    photographer: data.photos[0].photographer,
+                    photographer_url: data.photos[0].photographer_url
+                };
+            }
+        }
+    } catch (error) {
+        console.error("Pexels search error:", error);
+    }
+
+    return null;
+}
+
 export async function POST(req) {
     try {
         console.log("Generate API called");
@@ -267,6 +300,20 @@ export async function POST(req) {
                 }
                 if (posts.twitter && Array.isArray(posts.twitter)) {
                     posts.twitter.sort((a, b) => (b.score || 0) - (a.score || 0));
+                }
+            }
+
+            // Add images to LinkedIn posts
+            if (posts.linkedin && Array.isArray(posts.linkedin)) {
+                console.log("Fetching images for LinkedIn posts...");
+                for (let i = 0; i < posts.linkedin.length; i++) {
+                    const post = posts.linkedin[i];
+                    const searchQuery = product_info.substring(0, 100);
+                    const image = await searchPexelsImage(searchQuery);
+                    if (image) {
+                        posts.linkedin[i].image = image;
+                        console.log(`Image found for post ${i + 1}`);
+                    }
                 }
             }
         }

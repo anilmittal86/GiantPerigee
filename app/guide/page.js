@@ -33,6 +33,19 @@ export default function Guide() {
                     </div>
 
                     <div className="card" style={{ marginBottom: "2rem" }}>
+                        <h3 style={{ marginBottom: "1rem" }}>🖼️ Pexels API Key (Free)</h3>
+                        <p style={{ marginBottom: "1rem", lineHeight: "1.6" }}>
+                            Required for LinkedIn post images. Images are automatically fetched from Pexels stock photos.
+                        </p>
+                        <ol style={{ paddingLeft: "1.5rem", lineHeight: "1.8" }}>
+                            <li>Go to <a href="https://www.pexels.com/api/" target="_blank" style={{ color: "var(--primary)" }}>Pexels API</a>.</li>
+                            <li>Click <strong>Get Started</strong> and create a free account.</li>
+                            <li>Copy your API key from the dashboard.</li>
+                            <li>Add it to your <code>.env.local</code> file as <code>PEXELS_API_KEY=your_key_here</code>.</li>
+                        </ol>
+                    </div>
+
+                    <div className="card" style={{ marginBottom: "2rem" }}>
                         <h3 style={{ marginBottom: "1rem" }}>💼 LinkedIn Credentials</h3>
                         <p style={{ marginBottom: "1rem", lineHeight: "1.6" }}>
                             Required to post directly to your Company Page.

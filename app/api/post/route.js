@@ -1,9 +1,54 @@
 import axios from "axios";
 import { NextResponse } from "next/server";
 
+async function uploadImageToLinkedIn(imageUrl, accessToken, author) {
+    try {
+        const registerResponse = await axios.post(
+            "https://api.linkedin.com/v2/assets?action=registerUpload",
+            {
+                registerUploadRequest: {
+                    recipes: ["urn:li:digitalmediaRecipe:feedshare-image"],
+                    owner: author,
+                    serviceRelationships: [
+                        {
+                            relationshipType: "OWNER",
+                            identifier: "urn:li:userGeneratedContent"
+                        }
+                    ]
+                }
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    "Content-Type": "application/json",
+                    "X-Restli-Protocol-Version": "2.0.0",
+                }
+            }
+        );
+
+        const uploadUrl = registerResponse.data.value.uploadMechanism["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"].uploadUrl;
+        const asset = registerResponse.data.value.asset;
+
+        const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+        const imageBuffer = Buffer.from(imageResponse.data, 'binary');
+
+        await axios.put(uploadUrl, imageBuffer, {
+            headers: {
+                "Content-Type": "image/jpeg",
+                Authorization: `Bearer ${accessToken}`,
+            }
+        });
+
+        return asset;
+    } catch (error) {
+        console.error("Image upload error:", error.response?.data || error.message);
+        throw error;
+    }
+}
+
 export async function POST(req) {
     try {
-        const { post_content, access_token: clientToken, urn: clientUrn } = await req.json();
+        const { post_content, access_token: clientToken, urn: clientUrn, image_url } = await req.json();
 
         let access_token = clientToken;
         let urn = clientUrn;
@@ -29,6 +74,13 @@ export async function POST(req) {
             cleanUrn = `urn:li:organization:${cleanUrn}`;
         }
 
+        let assetUrn = null;
+        if (image_url) {
+            console.log("Uploading image to LinkedIn...");
+            assetUrn = await uploadImageToLinkedIn(image_url, cleanToken, cleanUrn);
+            console.log("Image uploaded successfully:", assetUrn);
+        }
+
         const body = {
             author: cleanUrn,
             lifecycleState: "PUBLISHED",
@@ -37,7 +89,21 @@ export async function POST(req) {
                     shareCommentary: {
                         text: post_content,
                     },
-                    shareMediaCategory: "NONE",
+                    shareMediaCategory: assetUrn ? "IMAGE" : "NONE",
+                    ...(assetUrn && {
+                        media: [
+                            {
+                                status: "READY",
+                                description: {
+                                    text: "Image"
+                                },
+                                media: assetUrn,
+                                title: {
+                                    text: "Post Image"
+                                }
+                            }
+                        ]
+                    })
                 },
             },
             visibility: {

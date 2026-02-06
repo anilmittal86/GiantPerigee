@@ -10,16 +10,18 @@ This application empowers you to generate, edit, and publish high-impact LinkedI
 ## ✨ Key Features
 
 -   **🧠 AI-Powered Content**: Generates 3 distinct post types (Hook, Insight, CTA) tailored to your brand voice.
+-   **🖼️ Auto-Generated Images**: LinkedIn posts automatically include relevant stock photos from Pexels.
 -   **🌍 Grounded in Reality**: Uses **Google Search** grounding to fetch real-time news and facts, ensuring your posts are up-to-date.
 -   **✍️ Full Editorial Control**: Edit any generated post directly in the browser to fix facts or tweak the tone before publishing.
--   **💼 Direct Integration**: Posts directly to your LinkedIn Company Page with a single click.
+-   **💼 Direct Integration**: Posts directly to your LinkedIn Company Page with a single click, including images.
 -   **🎨 Premium UI**: A clean, modern interface featuring **Geist** typography and a distraction-free design.
 
 ## 🛠️ Technology Stack
 
 -   **Framework**: [Next.js 16](https://nextjs.org/) (App Router)
 -   **AI Model**: [Google Gemini 2.0 Flash](https://ai.google.dev/)
--   **Integration**: LinkedIn API (OAuth 2.0)
+-   **Images**: [Pexels API](https://www.pexels.com/api/) for stock photos
+-   **Integration**: LinkedIn API (OAuth 2.0) with image upload support
 -   **Styling**: CSS Modules with Premium Design Tokens
 
 ## 🚀 Getting Started
@@ -28,6 +30,7 @@ This application empowers you to generate, edit, and publish high-impact LinkedI
 
 -   Node.js 18+ installed.
 -   A Google AI Studio API Key.
+-   A Pexels API Key (for images).
 -   LinkedIn Developer App credentials.
 
 ### Installation
@@ -59,9 +62,15 @@ You can configure your API keys in two ways:
 2.  **Environment Variables**: Create a `.env.local` file in the root directory:
     ```env
     GEMINI_API_KEY=your_key_here
+    PEXELS_API_KEY=your_pexels_key_here
     LINKEDIN_ACCESS_TOKEN=your_token_here
     LINKEDIN_ORG_URN=urn:li:organization:123456
     ```
+
+**Getting API Keys:**
+- **Gemini**: Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
+- **Pexels**: Visit [Pexels API](https://www.pexels.com/api/) and sign up for free
+- **LinkedIn**: Follow the detailed guide in the app's User Guide section
 
 👉 **Need help getting keys?** Check the built-in **User Guide** in the app header!
 
