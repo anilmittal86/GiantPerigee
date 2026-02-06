@@ -65,12 +65,39 @@ export async function POST(req) {
         }
 
         const genAI = new GoogleGenerativeAI(gemini_api_key);
-        // User has access to gemini-2.0-flash
-        console.log("Initializing Gemini model...");
-        const model = genAI.getGenerativeModel({
-            model: "gemini-3-flash-preview",
-            tools: [{ googleSearch: {} }],
-        });
+
+        // Model fallback chain: try best model first, fall back on rate limit errors
+        const MODEL_CHAIN = [
+            "gemini-3-flash-preview",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+        ];
+
+        async function tryGenerateWithFallback(prompt) {
+            for (let i = 0; i < MODEL_CHAIN.length; i++) {
+                const modelName = MODEL_CHAIN[i];
+                try {
+                    console.log(`Trying model: ${modelName}...`);
+                    const model = genAI.getGenerativeModel({
+                        model: modelName,
+                        tools: [{ googleSearch: {} }],
+                    });
+                    const result = await model.generateContent(prompt);
+                    console.log(`Success with model: ${modelName}`);
+                    return result;
+                } catch (err) {
+                    const isRateLimit = err.status === 429 ||
+                        err.message?.includes('429') ||
+                        err.message?.includes('RESOURCE_EXHAUSTED') ||
+                        err.message?.includes('quota');
+                    if (isRateLimit && i < MODEL_CHAIN.length - 1) {
+                        console.warn(`Rate limited on ${modelName}, falling back to ${MODEL_CHAIN[i + 1]}...`);
+                        continue;
+                    }
+                    throw err; // Re-throw if not rate limit or no more fallbacks
+                }
+            }
+        }
 
 
         let taskInstruction = "";
@@ -205,7 +232,7 @@ export async function POST(req) {
         }`;
 
         console.log("Sending prompt to Gemini...");
-        const result = await model.generateContent(prompt);
+        const result = await tryGenerateWithFallback(prompt);
         console.log("Received response from Gemini");
         const response = await result.response;
         let text = response.text();
