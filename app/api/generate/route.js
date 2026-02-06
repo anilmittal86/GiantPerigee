@@ -1,91 +1,39 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-// Generate a custom AI image for a LinkedIn post using Nano Banana (free tier)
-// Fallback chain: gemini-2.5-flash-preview-image-generation → gemini-3-pro-image-preview
-const IMAGE_MODEL_CHAIN = [
-    "gemini-2.5-flash-preview-image-generation",  // Free tier: ~500 images/day
-    "gemini-3-pro-image-preview",                   // Paid only (Nano Banana Pro)
-];
+// Curated Pexels search queries that are VERIFIED to return relevant,
+// professional images for AI/marketing/analytics/tech content.
+// Grouped by theme so the AI can pick the best match for each post.
+const CURATED_IMAGE_THEMES = {
+    analytics: ["laptop analytics graph", "computer data charts", "screen dashboard metrics"],
+    marketing: ["digital marketing laptop", "marketing team computer", "content strategy planning"],
+    ai_tech: ["artificial intelligence technology", "robot technology modern", "circuit board technology"],
+    search: ["search engine laptop", "google search computer", "SEO optimization screen"],
+    business: ["business presentation meeting", "startup team office", "professional workspace laptop"],
+    data: ["data visualization screen", "big data technology", "database server room"],
+    social: ["social media marketing", "social media phone", "online engagement mobile"],
+    growth: ["business growth chart", "revenue graph computer", "performance metrics screen"],
+};
 
-async function generatePostImage(genAI, postContent) {
-    const imagePrompt = `Create a clean, professional, modern illustration suitable for a LinkedIn post by AkuparaAI (an AI visibility and marketing analytics platform). The image should be landscape orientation (16:9), minimalist, and use a professional color palette (blues, teals, whites).
-
-The LinkedIn post is about:
-${postContent.substring(0, 300)}
-
-Style requirements:
-- Professional and corporate-friendly, suitable for B2B LinkedIn
-- Clean flat design or modern illustration style
-- Should visually represent concepts like: AI, analytics, brand visibility, marketing data, search optimization
-- NO text or words in the image
-- NO faces or photorealistic people
-- Think: abstract data visualization, network graphs, dashboard mockups, digital marketing concepts`;
-
-    for (const modelName of IMAGE_MODEL_CHAIN) {
-        try {
-            console.log(`Trying image model: ${modelName}...`);
-            const imageModel = genAI.getGenerativeModel({
-                model: modelName,
-                generationConfig: {
-                    responseModalities: ["TEXT", "IMAGE"],
-                },
-            });
-
-            const result = await imageModel.generateContent(imagePrompt);
-            const response = result.response;
-            const parts = response.candidates?.[0]?.content?.parts || [];
-
-            for (const part of parts) {
-                if (part.inlineData) {
-                    const mimeType = part.inlineData.mimeType || 'image/png';
-                    const base64Data = part.inlineData.data;
-                    const dataUrl = `data:${mimeType};base64,${base64Data}`;
-                    console.log(`AI image generated successfully with ${modelName}`);
-                    return {
-                        url: dataUrl,
-                        photographer: null,
-                        photographer_url: null,
-                        isGenerated: true
-                    };
-                }
-            }
-        } catch (error) {
-            const isRateLimit = error.status === 429 ||
-                error.message?.includes('429') ||
-                error.message?.includes('RESOURCE_EXHAUSTED') ||
-                error.message?.includes('quota') ||
-                error.message?.includes('billing');
-            console.error(`Image model ${modelName} failed:`, error.message || error);
-            if (isRateLimit) continue; // Try next model
-            // For non-rate-limit errors (model not found, etc.), also try next
-            continue;
-        }
-    }
-    return null;
-}
-
-// Fallback: search Pexels for stock photos
-async function searchPexelsImage(keywordSets) {
+// Get a themed image from Pexels using curated queries
+async function getThemedPexelsImage(theme) {
     const PEXELS_API_KEY = process.env.PEXELS_API_KEY || 'YOUR_PEXELS_API_KEY';
+    const queries = CURATED_IMAGE_THEMES[theme] || CURATED_IMAGE_THEMES.analytics;
 
-    for (const query of keywordSets) {
+    for (const query of queries) {
         try {
-            const cleanQuery = query.replace(/#\w+/g, '').trim().substring(0, 100);
-
             const response = await fetch(
-                `https://api.pexels.com/v1/search?query=${encodeURIComponent(cleanQuery)}&per_page=5&orientation=landscape`,
+                `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=15&orientation=landscape&size=large`,
                 {
-                    headers: {
-                        'Authorization': PEXELS_API_KEY
-                    }
+                    headers: { 'Authorization': PEXELS_API_KEY }
                 }
             );
 
             if (response.ok) {
                 const data = await response.json();
                 if (data.photos && data.photos.length > 0) {
-                    const photo = data.photos[Math.floor(Math.random() * Math.min(data.photos.length, 3))];
+                    // Pick a random photo from results for variety
+                    const photo = data.photos[Math.floor(Math.random() * Math.min(data.photos.length, 8))];
                     return {
                         url: photo.src.large,
                         photographer: photo.photographer,
@@ -97,8 +45,34 @@ async function searchPexelsImage(keywordSets) {
             console.error(`Pexels search error for query "${query}":`, error);
         }
     }
-
     return null;
+}
+
+// Map post content to the best image theme
+function pickImageTheme(postContent, usedThemes) {
+    const content = postContent.toLowerCase();
+
+    // Score each theme based on keyword matches in the post
+    const themeScores = {
+        analytics: ['analytics', 'dashboard', 'metrics', 'measure', 'track', 'monitor', 'kpi', 'performance', 'report'].filter(k => content.includes(k)).length,
+        marketing: ['marketing', 'content', 'campaign', 'brand awareness', 'audience', 'engagement', 'strategy'].filter(k => content.includes(k)).length,
+        ai_tech: ['ai', 'artificial intelligence', 'chatgpt', 'llm', 'machine learning', 'algorithm', 'automation'].filter(k => content.includes(k)).length,
+        search: ['search', 'seo', 'google', 'visibility', 'ranking', 'optimization', 'discover'].filter(k => content.includes(k)).length,
+        business: ['business', 'revenue', 'roi', 'enterprise', 'company', 'leadership', 'executive'].filter(k => content.includes(k)).length,
+        data: ['data', 'insight', 'analysis', 'intelligence', 'information', 'research'].filter(k => content.includes(k)).length,
+        social: ['social media', 'linkedin', 'twitter', 'post', 'share', 'community', 'network'].filter(k => content.includes(k)).length,
+        growth: ['growth', 'scale', 'increase', 'improve', 'boost', 'accelerate', 'opportunity'].filter(k => content.includes(k)).length,
+    };
+
+    // Sort by score descending, pick the highest that hasn't been used
+    const sorted = Object.entries(themeScores).sort((a, b) => b[1] - a[1]);
+    for (const [theme] of sorted) {
+        if (!usedThemes.has(theme)) {
+            return theme;
+        }
+    }
+    // All themes used, pick highest scoring anyway
+    return sorted[0][0];
 }
 
 
@@ -249,15 +223,6 @@ export async function POST(req) {
         7. **Length**: 150-300 words per post. Long enough to deliver value, short enough to keep attention.
         8. **Human voice**: Write like a real person sharing a genuine insight, NOT like a marketing AI. Use "I", share perspectives, be conversational.
 
-        IMAGE KEYWORDS (for LinkedIn posts only):
-        For each LinkedIn post, include an "image_keywords" field with exactly 2 search queries optimized for finding relevant stock photos on Pexels.
-        IMPORTANT CONTEXT: These posts are from AkuparaAI, an AI visibility platform helping brands with marketing, AI search optimization, and brand monitoring. Images MUST reflect this domain.
-        - Each query MUST be 2-4 words describing a CONCRETE, PHOTOGRAPHABLE scene related to AI, marketing, analytics, or digital business.
-        - GOOD examples: "marketing dashboard laptop", "person analyzing data screen", "team reviewing analytics", "digital marketing workspace", "AI search results screen", "brand monitoring dashboard"
-        - BAD examples (too abstract OR off-topic): "innovation", "woman portrait", "nature landscape", "digital transformation", "growth mindset", "person thinking"
-        - The image should look like it belongs in a marketing/tech blog post, NOT a lifestyle magazine.
-        - Each post MUST have DIFFERENT keywords from the other posts.
-
         ADDITIONAL PLATFORM CONTENT:
         Also generate 3 Reddit posts and 3 Twitter threads:
 
@@ -279,9 +244,9 @@ export async function POST(req) {
         Output Schema (return ONLY valid JSON, no markdown wrapping):
         {
             "linkedin": [
-                { "content": "full post text here...", "score": 7.2, "image_keywords": ["person typing laptop", "business analytics screen"] },
-                { "content": "full post text here...", "score": 8.1, "image_keywords": ["team brainstorming office", "whiteboard strategy planning"] },
-                { "content": "full post text here...", "score": 7.9, "image_keywords": ["developer coding monitor", "startup workspace desk"] }
+                { "content": "full post text here...", "score": 7.2 },
+                { "content": "full post text here...", "score": 8.1 },
+                { "content": "full post text here...", "score": 7.9 }
             ],
             "reddit": [
                 { "title": "Post Title", "content": "post body...", "score": 8.5 },
@@ -416,35 +381,35 @@ export async function POST(req) {
                 }
             }
 
-            // Generate AI images for LinkedIn posts (Nano Banana Pro), fallback to Pexels
+            // Add themed images to LinkedIn posts using content-based theme matching
             if (posts.linkedin && Array.isArray(posts.linkedin) && posts.linkedin.length > 0) {
-                console.log("Generating AI images for LinkedIn posts...");
+                console.log("Fetching themed images for LinkedIn posts...");
 
-                // Try AI image generation for all posts in parallel
-                const imagePromises = posts.linkedin.map(post =>
-                    generatePostImage(genAI, post.content)
-                );
+                // Pick a unique theme for each post based on content
+                const usedThemes = new Set();
+                const themes = posts.linkedin.map(post => {
+                    const theme = pickImageTheme(post.content, usedThemes);
+                    usedThemes.add(theme);
+                    return theme;
+                });
+
+                console.log("Selected image themes:", themes);
+
+                // Fetch all images in parallel
+                const imagePromises = themes.map(theme => getThemedPexelsImage(theme));
                 const images = await Promise.all(imagePromises);
 
-                // For any post where AI generation failed, try Pexels as fallback
+                const usedUrls = new Set();
                 for (let i = 0; i < posts.linkedin.length; i++) {
-                    if (images[i]) {
-                        posts.linkedin[i].image = images[i];
-                        console.log(`AI image generated for post ${i + 1}`);
+                    const image = images[i];
+                    if (image && !usedUrls.has(image.url)) {
+                        posts.linkedin[i].image = image;
+                        usedUrls.add(image.url);
+                        console.log(`Themed image (${themes[i]}) found for post ${i + 1}`);
                     } else {
-                        console.log(`AI image failed for post ${i + 1}, trying Pexels fallback...`);
-                        const postKeywords = Array.isArray(posts.linkedin[i].image_keywords)
-                            ? posts.linkedin[i].image_keywords
-                            : ["marketing analytics dashboard", "AI technology workspace"];
-                        const pexelsImage = await searchPexelsImage(postKeywords);
-                        if (pexelsImage) {
-                            posts.linkedin[i].image = pexelsImage;
-                            console.log(`Pexels fallback image found for post ${i + 1}`);
-                        } else {
-                            console.log(`No image available for post ${i + 1}, posting without image`);
-                        }
+                        console.log(`No image for post ${i + 1}, posting without image`);
                     }
-                    // Clean up - don't send keywords to frontend
+                    // Clean up
                     delete posts.linkedin[i].image_keywords;
                 }
             }
