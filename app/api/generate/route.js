@@ -284,6 +284,9 @@ export async function POST(req) {
         let text = response.text();
         console.log("Raw text response:", text.substring(0, 500) + "...");
 
+        // Strip markdown code block wrapping if present
+        text = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+
         // Smart JSON extraction that fixes "Bad control character" errors
         // by escaping newlines inside strings.
         function sanitizeAndParseJson(str) {
@@ -335,12 +338,12 @@ export async function POST(req) {
                         result += char;
                     }
                 } else {
-                    // Not in string
+                    // Not in string - track ALL bracket types for proper depth
                     if (char === '"') {
                         inString = true;
-                    } else if (char === openChar) {
+                    } else if (char === '{' || char === '[') {
                         depth++;
-                    } else if (char === closeChar) {
+                    } else if (char === '}' || char === ']') {
                         depth--;
                     }
                     result += char;
