@@ -24,7 +24,7 @@ export default function Home() {
                 gemini_api_key: config.geminiKey,
                 subreddit: config.subreddit,
             }, {
-                timeout: 30000 // 30 seconds timeout
+                timeout: 90000 // 90 seconds timeout
             });
 
             if (res.data.posts) {

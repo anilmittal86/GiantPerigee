@@ -40,25 +40,29 @@ async function searchPexelsImage(keywordSets) {
     return null;
 }
 
-async function generateImageKeywords(model, postContent) {
+async function generateAllImageKeywords(model, linkedinPosts) {
     try {
-        const keywordPrompt = `Given this LinkedIn post, generate 3 concise Pexels stock photo search queries that would find a visually relevant, professional image to accompany it. Each query should be 2-4 words, concrete and visual (e.g. "team collaboration office", "data analytics dashboard", "startup meeting"). Avoid abstract concepts that won't match stock photos.
+        const postSummaries = linkedinPosts.map((p, i) =>
+            `Post ${i + 1}:\n${p.content.substring(0, 300)}`
+        ).join('\n\n');
 
-Post:
-${postContent.substring(0, 500)}
+        const keywordPrompt = `Given these ${linkedinPosts.length} LinkedIn posts, generate 2 concise Pexels stock photo search queries per post. Each query should be 2-4 words, concrete and visual (e.g. "team collaboration office", "data analytics dashboard"). Avoid abstract concepts. Each post MUST get DIFFERENT keywords.
 
-Return ONLY a JSON array of 3 strings, nothing else. Example: ["team brainstorming whiteboard", "business growth chart", "modern office workspace"]`;
+${postSummaries}
+
+Return ONLY a JSON array of arrays. Example for 3 posts: [["team brainstorming whiteboard", "business growth chart"], ["coding laptop desk", "software development team"], ["marketing analytics screen", "digital strategy meeting"]]`;
 
         const result = await model.generateContent(keywordPrompt);
         const text = result.response.text();
 
-        // Extract JSON array from response
-        const match = text.match(/\[[\s\S]*?\]/);
-        if (match) {
-            const keywords = JSON.parse(match[0]);
-            if (Array.isArray(keywords) && keywords.length > 0) {
-                console.log("Generated image keywords:", keywords);
-                return keywords;
+        // Extract the outer JSON array
+        const startIdx = text.indexOf('[[');
+        const endIdx = text.lastIndexOf(']]');
+        if (startIdx !== -1 && endIdx !== -1) {
+            const allKeywords = JSON.parse(text.substring(startIdx, endIdx + 2));
+            if (Array.isArray(allKeywords)) {
+                console.log("Generated all image keywords:", allKeywords);
+                return allKeywords;
             }
         }
     } catch (error) {
@@ -337,47 +341,36 @@ export async function POST(req) {
                 }
             }
 
-            // Add images to LinkedIn posts using AI-generated keywords per post
-            if (posts.linkedin && Array.isArray(posts.linkedin)) {
-                console.log("Generating image keywords and fetching images for LinkedIn posts...");
+            // Add images to LinkedIn posts using AI-generated keywords (single Gemini call + parallel Pexels)
+            if (posts.linkedin && Array.isArray(posts.linkedin) && posts.linkedin.length > 0) {
+                console.log("Generating image keywords for all LinkedIn posts...");
 
-                // Use a lightweight model call (no search tool needed) for keyword generation
                 const keywordModel = genAI.getGenerativeModel({
                     model: "gemini-2.5-flash",
                 });
 
-                const usedImageUrls = new Set();
+                const allKeywords = await generateAllImageKeywords(keywordModel, posts.linkedin);
 
-                for (let i = 0; i < posts.linkedin.length; i++) {
-                    const post = posts.linkedin[i];
-                    const keywords = await generateImageKeywords(keywordModel, post.content);
+                if (allKeywords && allKeywords.length > 0) {
+                    // Search Pexels for all posts in parallel
+                    const imagePromises = allKeywords.map(keywords =>
+                        Array.isArray(keywords) ? searchPexelsImage(keywords) : Promise.resolve(null)
+                    );
+                    const images = await Promise.all(imagePromises);
 
-                    if (keywords && keywords.length > 0) {
-                        // Try to find an image that hasn't been used by another post
-                        let image = null;
-                        let attempts = 0;
-                        const maxAttempts = 2;
-
-                        while (attempts < maxAttempts) {
-                            image = await searchPexelsImage(keywords);
-                            if (image && !usedImageUrls.has(image.url)) {
-                                break;
-                            }
-                            // If duplicate, shuffle keywords and retry
-                            keywords.reverse();
-                            attempts++;
-                        }
-
-                        if (image && !usedImageUrls.has(image.url)) {
+                    const usedUrls = new Set();
+                    for (let i = 0; i < posts.linkedin.length; i++) {
+                        const image = images[i];
+                        if (image && !usedUrls.has(image.url)) {
                             posts.linkedin[i].image = image;
-                            usedImageUrls.add(image.url);
+                            usedUrls.add(image.url);
                             console.log(`Relevant image found for post ${i + 1}`);
                         } else {
                             console.log(`No unique relevant image for post ${i + 1}, posting without image`);
                         }
-                    } else {
-                        console.log(`Could not generate keywords for post ${i + 1}, posting without image`);
                     }
+                } else {
+                    console.log("Could not generate image keywords, posts will go without images");
                 }
             }
         }
