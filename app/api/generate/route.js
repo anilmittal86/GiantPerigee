@@ -1,25 +1,58 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-// System-level base keywords reflecting AkuparaAI's brand domain.
-// These are appended as fallback searches after post-specific keywords
-// to ensure images always relate to AI, marketing, and analytics.
-const SYSTEM_IMAGE_KEYWORDS = [
-    "marketing analytics dashboard",
-    "AI chatbot conversation screen",
-    "digital marketing team laptop",
-    "brand monitoring analytics",
-    "search engine results screen",
-    "business data visualization",
-    "marketing strategy whiteboard",
-    "person analyzing data screen",
-];
+// Generate a custom AI image for a LinkedIn post using Nano Banana Pro
+async function generatePostImage(genAI, postContent) {
+    try {
+        const imageModel = genAI.getGenerativeModel({
+            model: "gemini-3-pro-image-preview",
+            generationConfig: {
+                responseModalities: ["TEXT", "IMAGE"],
+            },
+        });
 
+        // Create a focused image prompt from the post content
+        const imagePrompt = `Create a clean, professional, modern illustration suitable for a LinkedIn post by AkuparaAI (an AI visibility and marketing analytics platform). The image should be landscape orientation (16:9), minimalist, and use a professional color palette (blues, teals, whites).
+
+The LinkedIn post is about:
+${postContent.substring(0, 300)}
+
+Style requirements:
+- Professional and corporate-friendly, suitable for B2B LinkedIn
+- Clean flat design or modern illustration style
+- Should visually represent concepts like: AI, analytics, brand visibility, marketing data, search optimization
+- NO text or words in the image
+- NO faces or photorealistic people
+- Think: abstract data visualization, network graphs, dashboard mockups, digital marketing concepts`;
+
+        const result = await imageModel.generateContent(imagePrompt);
+        const response = result.response;
+        const parts = response.candidates?.[0]?.content?.parts || [];
+
+        for (const part of parts) {
+            if (part.inlineData) {
+                const mimeType = part.inlineData.mimeType || 'image/png';
+                const base64Data = part.inlineData.data;
+                const dataUrl = `data:${mimeType};base64,${base64Data}`;
+                console.log("AI image generated successfully");
+                return {
+                    url: dataUrl,
+                    photographer: null,
+                    photographer_url: null,
+                    isGenerated: true
+                };
+            }
+        }
+    } catch (error) {
+        console.error("AI image generation error:", error.message || error);
+    }
+    return null;
+}
+
+// Fallback: search Pexels for stock photos
 async function searchPexelsImage(keywordSets) {
     const PEXELS_API_KEY = process.env.PEXELS_API_KEY || 'YOUR_PEXELS_API_KEY';
 
-    // keywordSets is an array of search queries to try in order of relevance
-    // e.g. ["AI chatbot customer service", "customer support technology", "business automation"]
     for (const query of keywordSets) {
         try {
             const cleanQuery = query.replace(/#\w+/g, '').trim().substring(0, 100);
@@ -36,7 +69,6 @@ async function searchPexelsImage(keywordSets) {
             if (response.ok) {
                 const data = await response.json();
                 if (data.photos && data.photos.length > 0) {
-                    // Pick a random photo from top results for variety across posts
                     const photo = data.photos[Math.floor(Math.random() * Math.min(data.photos.length, 3))];
                     return {
                         url: photo.src.large,
@@ -50,7 +82,6 @@ async function searchPexelsImage(keywordSets) {
         }
     }
 
-    // No relevant image found from any keyword set
     return null;
 }
 
@@ -366,33 +397,33 @@ export async function POST(req) {
                 }
             }
 
-            // Add images to LinkedIn posts using keywords from the main prompt + system fallbacks
+            // Generate AI images for LinkedIn posts (Nano Banana Pro), fallback to Pexels
             if (posts.linkedin && Array.isArray(posts.linkedin) && posts.linkedin.length > 0) {
-                console.log("Fetching Pexels images using prompt-generated + system keywords...");
+                console.log("Generating AI images for LinkedIn posts...");
 
-                // Each post gets: its own AI-generated keywords first, then
-                // a rotating subset of system keywords as fallback
-                const imagePromises = posts.linkedin.map((post, idx) => {
-                    const postKeywords = Array.isArray(post.image_keywords) ? post.image_keywords : [];
-                    // Pick 2 different system keywords per post (rotating through the pool)
-                    const systemFallbacks = [
-                        SYSTEM_IMAGE_KEYWORDS[(idx * 2) % SYSTEM_IMAGE_KEYWORDS.length],
-                        SYSTEM_IMAGE_KEYWORDS[(idx * 2 + 1) % SYSTEM_IMAGE_KEYWORDS.length],
-                    ];
-                    const combinedKeywords = [...postKeywords, ...systemFallbacks];
-                    return searchPexelsImage(combinedKeywords);
-                });
+                // Try AI image generation for all posts in parallel
+                const imagePromises = posts.linkedin.map(post =>
+                    generatePostImage(genAI, post.content)
+                );
                 const images = await Promise.all(imagePromises);
 
-                const usedUrls = new Set();
+                // For any post where AI generation failed, try Pexels as fallback
                 for (let i = 0; i < posts.linkedin.length; i++) {
-                    const image = images[i];
-                    if (image && !usedUrls.has(image.url)) {
-                        posts.linkedin[i].image = image;
-                        usedUrls.add(image.url);
-                        console.log(`Relevant image found for post ${i + 1}`);
+                    if (images[i]) {
+                        posts.linkedin[i].image = images[i];
+                        console.log(`AI image generated for post ${i + 1}`);
                     } else {
-                        console.log(`No relevant image for post ${i + 1}, posting without image`);
+                        console.log(`AI image failed for post ${i + 1}, trying Pexels fallback...`);
+                        const postKeywords = Array.isArray(posts.linkedin[i].image_keywords)
+                            ? posts.linkedin[i].image_keywords
+                            : ["marketing analytics dashboard", "AI technology workspace"];
+                        const pexelsImage = await searchPexelsImage(postKeywords);
+                        if (pexelsImage) {
+                            posts.linkedin[i].image = pexelsImage;
+                            console.log(`Pexels fallback image found for post ${i + 1}`);
+                        } else {
+                            console.log(`No image available for post ${i + 1}, posting without image`);
+                        }
                     }
                     // Clean up - don't send keywords to frontend
                     delete posts.linkedin[i].image_keywords;

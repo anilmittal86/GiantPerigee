@@ -229,7 +229,16 @@ export default function PostGenerator({ generatedPosts, loading, configData }) {
                                     alt="Post visual"
                                     style={{ width: "100%", height: "auto", display: "block" }}
                                 />
-                                {postObj.image.photographer && (
+                                {postObj.image.isGenerated ? (
+                                    <div style={{
+                                        padding: "0.5rem",
+                                        fontSize: "0.75rem",
+                                        color: "var(--text-dim)",
+                                        background: "var(--background)"
+                                    }}>
+                                        AI-generated image by Nano Banana Pro
+                                    </div>
+                                ) : postObj.image.photographer && (
                                     <div style={{
                                         padding: "0.5rem",
                                         fontSize: "0.75rem",
