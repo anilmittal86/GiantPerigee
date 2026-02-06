@@ -1,6 +1,20 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
+// System-level base keywords reflecting AkuparaAI's brand domain.
+// These are appended as fallback searches after post-specific keywords
+// to ensure images always relate to AI, marketing, and analytics.
+const SYSTEM_IMAGE_KEYWORDS = [
+    "marketing analytics dashboard",
+    "AI chatbot conversation screen",
+    "digital marketing team laptop",
+    "brand monitoring analytics",
+    "search engine results screen",
+    "business data visualization",
+    "marketing strategy whiteboard",
+    "person analyzing data screen",
+];
+
 async function searchPexelsImage(keywordSets) {
     const PEXELS_API_KEY = process.env.PEXELS_API_KEY || 'YOUR_PEXELS_API_KEY';
 
@@ -190,10 +204,11 @@ export async function POST(req) {
 
         IMAGE KEYWORDS (for LinkedIn posts only):
         For each LinkedIn post, include an "image_keywords" field with exactly 2 search queries optimized for finding relevant stock photos on Pexels.
-        - Each query MUST be 2-4 words describing a CONCRETE, PHOTOGRAPHABLE scene (people, objects, settings).
-        - GOOD examples: "person typing laptop", "business team meeting", "smartphone analytics screen", "woman presenting whiteboard", "developer coding screen"
-        - BAD examples (too abstract, will return irrelevant photos): "innovation", "digital transformation", "AI concept", "growth mindset", "strategy"
-        - Think: "What photo would a magazine editor choose for this article?" The image should visually complement the post's theme.
+        IMPORTANT CONTEXT: These posts are from AkuparaAI, an AI visibility platform helping brands with marketing, AI search optimization, and brand monitoring. Images MUST reflect this domain.
+        - Each query MUST be 2-4 words describing a CONCRETE, PHOTOGRAPHABLE scene related to AI, marketing, analytics, or digital business.
+        - GOOD examples: "marketing dashboard laptop", "person analyzing data screen", "team reviewing analytics", "digital marketing workspace", "AI search results screen", "brand monitoring dashboard"
+        - BAD examples (too abstract OR off-topic): "innovation", "woman portrait", "nature landscape", "digital transformation", "growth mindset", "person thinking"
+        - The image should look like it belongs in a marketing/tech blog post, NOT a lifestyle magazine.
         - Each post MUST have DIFFERENT keywords from the other posts.
 
         ADDITIONAL PLATFORM CONTENT:
@@ -351,17 +366,21 @@ export async function POST(req) {
                 }
             }
 
-            // Add images to LinkedIn posts using keywords from the main prompt (no extra API call)
+            // Add images to LinkedIn posts using keywords from the main prompt + system fallbacks
             if (posts.linkedin && Array.isArray(posts.linkedin) && posts.linkedin.length > 0) {
-                console.log("Fetching Pexels images using prompt-generated keywords...");
+                console.log("Fetching Pexels images using prompt-generated + system keywords...");
 
-                // Search Pexels for all posts in parallel using keywords from the main response
-                const imagePromises = posts.linkedin.map(post => {
-                    const keywords = post.image_keywords;
-                    if (Array.isArray(keywords) && keywords.length > 0) {
-                        return searchPexelsImage(keywords);
-                    }
-                    return Promise.resolve(null);
+                // Each post gets: its own AI-generated keywords first, then
+                // a rotating subset of system keywords as fallback
+                const imagePromises = posts.linkedin.map((post, idx) => {
+                    const postKeywords = Array.isArray(post.image_keywords) ? post.image_keywords : [];
+                    // Pick 2 different system keywords per post (rotating through the pool)
+                    const systemFallbacks = [
+                        SYSTEM_IMAGE_KEYWORDS[(idx * 2) % SYSTEM_IMAGE_KEYWORDS.length],
+                        SYSTEM_IMAGE_KEYWORDS[(idx * 2 + 1) % SYSTEM_IMAGE_KEYWORDS.length],
+                    ];
+                    const combinedKeywords = [...postKeywords, ...systemFallbacks];
+                    return searchPexelsImage(combinedKeywords);
                 });
                 const images = await Promise.all(imagePromises);
 
