@@ -1,38 +1,80 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-async function searchPexelsImage(query) {
+// Curated Pexels search queries that are VERIFIED to return relevant,
+// professional images for AI/marketing/analytics/tech content.
+// Grouped by theme so the AI can pick the best match for each post.
+const CURATED_IMAGE_THEMES = {
+    analytics: ["laptop analytics graph", "computer data charts", "screen dashboard metrics"],
+    marketing: ["digital marketing laptop", "marketing team computer", "content strategy planning"],
+    ai_tech: ["artificial intelligence technology", "robot technology modern", "circuit board technology"],
+    search: ["search engine laptop", "google search computer", "SEO optimization screen"],
+    business: ["business presentation meeting", "startup team office", "professional workspace laptop"],
+    data: ["data visualization screen", "big data technology", "database server room"],
+    social: ["social media marketing", "social media phone", "online engagement mobile"],
+    growth: ["business growth chart", "revenue graph computer", "performance metrics screen"],
+};
+
+// Get a themed image from Pexels using curated queries
+async function getThemedPexelsImage(theme) {
     const PEXELS_API_KEY = process.env.PEXELS_API_KEY || 'YOUR_PEXELS_API_KEY';
+    const queries = CURATED_IMAGE_THEMES[theme] || CURATED_IMAGE_THEMES.analytics;
 
-    try {
-        const cleanQuery = query.replace(/#\w+/g, '').trim().substring(0, 100);
-        const searchTerms = cleanQuery.split(' ').slice(0, 3).join(' ');
+    for (const query of queries) {
+        try {
+            const response = await fetch(
+                `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=15&orientation=landscape&size=large`,
+                {
+                    headers: { 'Authorization': PEXELS_API_KEY }
+                }
+            );
 
-        const response = await fetch(
-            `https://api.pexels.com/v1/search?query=${encodeURIComponent(searchTerms)}&per_page=3&orientation=landscape`,
-            {
-                headers: {
-                    'Authorization': PEXELS_API_KEY
+            if (response.ok) {
+                const data = await response.json();
+                if (data.photos && data.photos.length > 0) {
+                    // Pick a random photo from results for variety
+                    const photo = data.photos[Math.floor(Math.random() * Math.min(data.photos.length, 8))];
+                    return {
+                        url: photo.src.large,
+                        photographer: photo.photographer,
+                        photographer_url: photo.photographer_url
+                    };
                 }
             }
-        );
-
-        if (response.ok) {
-            const data = await response.json();
-            if (data.photos && data.photos.length > 0) {
-                return {
-                    url: data.photos[0].src.large,
-                    photographer: data.photos[0].photographer,
-                    photographer_url: data.photos[0].photographer_url
-                };
-            }
+        } catch (error) {
+            console.error(`Pexels search error for query "${query}":`, error);
         }
-    } catch (error) {
-        console.error("Pexels search error:", error);
     }
-
     return null;
 }
+
+// Map post content to the best image theme
+function pickImageTheme(postContent, usedThemes) {
+    const content = postContent.toLowerCase();
+
+    // Score each theme based on keyword matches in the post
+    const themeScores = {
+        analytics: ['analytics', 'dashboard', 'metrics', 'measure', 'track', 'monitor', 'kpi', 'performance', 'report'].filter(k => content.includes(k)).length,
+        marketing: ['marketing', 'content', 'campaign', 'brand awareness', 'audience', 'engagement', 'strategy'].filter(k => content.includes(k)).length,
+        ai_tech: ['ai', 'artificial intelligence', 'chatgpt', 'llm', 'machine learning', 'algorithm', 'automation'].filter(k => content.includes(k)).length,
+        search: ['search', 'seo', 'google', 'visibility', 'ranking', 'optimization', 'discover'].filter(k => content.includes(k)).length,
+        business: ['business', 'revenue', 'roi', 'enterprise', 'company', 'leadership', 'executive'].filter(k => content.includes(k)).length,
+        data: ['data', 'insight', 'analysis', 'intelligence', 'information', 'research'].filter(k => content.includes(k)).length,
+        social: ['social media', 'linkedin', 'twitter', 'post', 'share', 'community', 'network'].filter(k => content.includes(k)).length,
+        growth: ['growth', 'scale', 'increase', 'improve', 'boost', 'accelerate', 'opportunity'].filter(k => content.includes(k)).length,
+    };
+
+    // Sort by score descending, pick the highest that hasn't been used
+    const sorted = Object.entries(themeScores).sort((a, b) => b[1] - a[1]);
+    for (const [theme] of sorted) {
+        if (!usedThemes.has(theme)) {
+            return theme;
+        }
+    }
+    // All themes used, pick highest scoring anyway
+    return sorted[0][0];
+}
+
 
 export async function POST(req) {
     try {
@@ -58,71 +100,112 @@ export async function POST(req) {
         }
 
         const genAI = new GoogleGenerativeAI(gemini_api_key);
-        // User has access to gemini-2.0-flash
-        console.log("Initializing Gemini model...");
-        const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash",
-            // generationConfig: { responseMimeType: "application/json" } -- Removed for 2.5 search compatibility
-            tools: [{ googleSearch: {} }],
-        });
 
+        // Model fallback chain: try best model first, fall back on rate limit errors
+        const MODEL_CHAIN = [
+            "gemini-3-flash-preview",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+        ];
 
-
+        async function tryGenerateWithFallback(prompt) {
+            for (let i = 0; i < MODEL_CHAIN.length; i++) {
+                const modelName = MODEL_CHAIN[i];
+                try {
+                    console.log(`Trying model: ${modelName}...`);
+                    const model = genAI.getGenerativeModel({
+                        model: modelName,
+                        tools: [{ googleSearch: {} }],
+                    });
+                    const result = await model.generateContent(prompt);
+                    console.log(`Success with model: ${modelName}`);
+                    return result;
+                } catch (err) {
+                    const isRateLimit = err.status === 429 ||
+                        err.message?.includes('429') ||
+                        err.message?.includes('RESOURCE_EXHAUSTED') ||
+                        err.message?.includes('quota');
+                    if (isRateLimit && i < MODEL_CHAIN.length - 1) {
+                        console.warn(`Rate limited on ${modelName}, falling back to ${MODEL_CHAIN[i + 1]}...`);
+                        continue;
+                    }
+                    throw err; // Re-throw if not rate limit or no more fallbacks
+                }
+            }
+        }
 
 
         let taskInstruction = "";
 
         switch (post_type) {
             case "research":
-                taskInstruction = `Goal: Write 3 Deep Dive / Research-backed posts about the Context.
-                Structure logic:
-                1. Hook: Startling fact/trend directly related to the Context.
-                2. Data: Explain "why" with authority.
-                3. Application: How this applies to the reader.
-                4. CTA: Thought-provoking question.
-                Tone: Authoritative, academic but accessible.`;
+                taskInstruction = `Goal: Write 3 Deep Dive / Research-backed LinkedIn posts about the Context.
+
+                Each post MUST follow this structure:
+                1. Hook (line 1): A startling statistic, counterintuitive fact, or bold claim that stops the scroll. This line alone must make someone want to read more.
+                2. Tension: Why this matters NOW. Create urgency with a "the old way is broken" angle.
+                3. Insight: 2-3 short paragraphs with data, research, or expert-level analysis. Use specific numbers when possible.
+                4. Takeaway: One clear, actionable lesson the reader walks away with.
+                5. CTA: End with a thought-provoking question that invites comments.
+
+                Tone: Authoritative but accessible. Write like a senior industry analyst sharing insider knowledge, not an academic paper.`;
                 break;
             case "pun":
-                taskInstruction = `Goal: Write 3 Short, Punchy, Humorous posts about the Context.
-                Structure logic:
-                1. Set-up: Relatable situation regarding the Context.
-                2. Punchline: Witty observation.
-                3. CTA: Lighthearted prompt.
-                Tone: Witty, clever, dad joke style.`;
+                taskInstruction = `Goal: Write 3 Short, Punchy, Humorous LinkedIn posts about the Context.
+
+                Each post MUST follow this structure:
+                1. Hook (line 1): A relatable "you know this feeling" setup OR a bold statement that makes people nod.
+                2. Build: 2-3 short lines that build the relatable scenario.
+                3. Punchline: The witty twist, observation, or "hard truth" delivered with humor.
+                4. CTA: A lighthearted question or "Tag someone who..." prompt.
+
+                Tone: Witty, self-aware, slightly irreverent. Think clever LinkedIn satire, NOT corporate cringe. The humor should make people think AND smile.`;
                 break;
             case "feature":
-                taskInstruction = `Goal: Write 3 Product/Feature Launch posts.
-                Structure logic:
-                1. Problem: What's broken in the user's specific Context?
-                2. Reveal: The new solution (Context).
-                3. Benefit: Specific outcome.
-                4. CTA: "Link in bio" or "Try it now".
-                Tone: Exciting, energetic.`;
+                taskInstruction = `Goal: Write 3 Product/Feature Launch LinkedIn posts about the Context.
+
+                Each post MUST follow this structure:
+                1. Hook (line 1): Name the painful problem your audience faces. Be specific, not generic.
+                2. Agitate: 2-3 lines showing you deeply understand the frustration (failed attempts, wasted time, etc.).
+                3. Reveal: Introduce the solution naturally - not as a sales pitch but as "here's what changed."
+                4. Proof: One specific benefit with a concrete outcome (saved X hours, increased Y%, etc.).
+                5. CTA: Clear next step - "Link in comments" or "DM me for access."
+
+                Tone: Exciting but authentic. You're sharing something genuinely useful, not selling. Focus on transformation, not features.`;
                 break;
             case "question":
-                taskInstruction = `Goal: Write 3 Engaging Questions strictly about the Context.
-                Structure logic:
-                1. Question: A specific, thought-provoking question directly regarding the details in the Context.
-                2. Context: Briefly explain the nuance or tension.
-                3. Ask: "What do you think?"
-                Tone: Curiosity-driven, professional, conversational.`;
+                taskInstruction = `Goal: Write 3 Engaging, Discussion-Driving LinkedIn posts about the Context.
+
+                Each post MUST follow this structure:
+                1. Hook (line 1): A provocative question OR a bold statement that challenges conventional wisdom.
+                2. Context: 3-4 short paragraphs that set up the tension. Present both sides or reveal a surprising angle.
+                3. Personal take: Share a brief, authentic perspective (1-2 lines).
+                4. Open question: End with a specific question that has no obvious right answer - this is what drives comments.
+
+                Tone: Curiosity-driven, intellectually honest. You're starting a real conversation, not fishing for engagement.`;
                 break;
             case "mixed":
             default:
-                taskInstruction = `Goal: Write 3 Opinionated, High-Impact posts about the Context.
-                Style: Assertive, Thought-Leader, "Hard Truth".
-                
-                Style Reference (Emulate this tone):
-                "Most brands are completely blind when it comes to their AI visibility. We spend millions on SEO, yet we have zero infrastructure for tracking ChatGPT. You can’t optimize what you can’t measure. Designing 'golden prompts' isn't just a fun exercise; it is the only way to audit your reality."
+                taskInstruction = `Goal: Write 3 Opinionated, High-Impact LinkedIn posts about the Context.
+                Style: Assertive thought-leader. Each post should take a clear stance.
 
-                Structure Types:
-                1. The Wake-Up Call: Call out a common mistake in the Context.
-                2. The Strategic Pivot: Why the old way is dead and the Context is the future.
-                3. The Unpopular Opinion: A controversial take on the Context.`;
+                Style Reference (Emulate this energy and structure):
+                "Most brands are completely blind when it comes to their AI visibility.
+
+                We spend millions on SEO, yet we have zero infrastructure for tracking ChatGPT.
+
+                You can't optimize what you can't measure.
+
+                Designing 'golden prompts' isn't just a fun exercise; it is the only way to audit your reality."
+
+                Each of the 3 posts should use a DIFFERENT angle:
+                1. The Wake-Up Call: Call out a common mistake or blind spot. Make the reader uncomfortable, then offer clarity.
+                2. The Strategic Pivot: Argue why the old way is dead. Present the Context as the inevitable future.
+                3. The Unpopular Opinion: Take a genuinely controversial stance on the Context. Back it up with logic.`;
                 break;
         }
 
-        const prompt = `Role: You are the Lead Content Strategist.
+        const prompt = `Role: You are an elite LinkedIn ghostwriter who has grown multiple accounts to 100K+ followers. You understand what makes content go viral on LinkedIn.
 
         Context (Product/Topic):
         ${product_info}
@@ -130,65 +213,60 @@ export async function POST(req) {
         Task:
         ${taskInstruction}
 
-        GLOBAL CONSTRAINTS & FORMATTING (CRITICAL):
-        1. **Strict Context Adherence**: Write ONLY about the specific details in the Context.
-        2. **Double Line Breaks**: You MUST use double line breaks (\\n\\n).
-        3. **No Labels**: Do NOT use structural labels (e.g. "Hook:", "Body:").
-        4. **Tone**: Human, professional, impactful.
-        5. **Hashtags**: Include relevant hashtags AT THE END (LinkedIn Only).
-        6. **Quantity**: generate exactly 3 High-Quality potential options for LinkedIn, 3 options for Reddit, AND 3 thread options for Twitter.
+        LINKEDIN FORMATTING RULES (CRITICAL - this is what separates viral posts from ignored ones):
+        1. **First line is EVERYTHING**: The hook must create curiosity, shock, or a "wait, what?" reaction. LinkedIn shows only ~2 lines before "see more" - your hook must earn that click.
+        2. **One idea per line**: Short sentences. One thought per paragraph. Walls of text get scrolled past.
+        3. **White space is your weapon**: Use double line breaks (\\n\\n) between EVERY paragraph. Dense text kills engagement on LinkedIn.
+        4. **Rhythm and pacing**: Alternate between short punchy lines (3-8 words) and slightly longer explanatory lines. This creates a reading "flow."
+        5. **NO structural labels**: Never write "Hook:", "Body:", "CTA:" or any labels. The structure should be invisible.
+        6. **Hashtags**: 3-5 relevant hashtags at the very end, separated by a blank line from the main content.
+        7. **Length**: 150-300 words per post. Long enough to deliver value, short enough to keep attention.
+        8. **Human voice**: Write like a real person sharing a genuine insight, NOT like a marketing AI. Use "I", share perspectives, be conversational.
 
-        PLATFORM SPECIFICS:
-        - **LinkedIn**: Professional, thought-leader style. Use hashtags.
-        - **Reddit**: Conversational, community-focused, specific to the Subreddit "r/${subreddit}".
-            - **Title**: Required. Catchy, specific, no clickbait.
-            - **Body**: Informal, discussion-driven. NO HASHTAGS.
-        - **Twitter**: Engaging threads optimized for Twitter's format.
-            - **Thread Format**: Each option should be a complete thread (array of tweets).
+        ADDITIONAL PLATFORM CONTENT:
+        Also generate 3 Reddit posts and 3 Twitter threads:
+
+        **Reddit** (for r/${subreddit}):
+            - **Title**: Catchy, specific, no clickbait.
+            - **Body**: Conversational, community-focused, discussion-driven. NO HASHTAGS. Write like a helpful community member, not a marketer.
+
+        **Twitter**:
+            - **Thread Format**: Each option = array of 3-6 tweets.
             - **Tweet Length**: Each tweet MUST be 280 characters or less.
-            - **Thread Structure**:
-                - Tweet 1: Strong hook that grabs attention
-                - Tweet 2-4: Break down the main points (numbered or flowing narrative)
-                - Last Tweet: CTA or thought-provoking conclusion
-            - **Style**: Conversational, punchy, use emojis sparingly for emphasis.
-            - **Hashtags**: 1-2 relevant hashtags only in the last tweet.
-            - Each thread should have 3-6 tweets total.
+            - **Tweet 1**: Strong hook. **Tweets 2-4**: Key points. **Last Tweet**: CTA + 1-2 hashtags.
+            - **Style**: Conversational, punchy, minimal emojis.
 
-        CRITICAL SCORING INSTRUCTION (The "Simon Cowell" Rule):
-        - **Score 6.0 - 7.5**: Good, professional, safe.
-        - **Score 7.6 - 8.9**: Great hook, strong value, "Scroll Stopper".
-        - **Score 9.0+**: RARE. Absolute viral perfection.
-        
-        Output Schema:
-        Return a JSON object with three keys "linkedin", "reddit", and "twitter":
+        SCORING (The "Simon Cowell" Rule - be brutally honest):
+        - **6.0-7.5**: Competent, professional, but forgettable. Would get a few likes.
+        - **7.6-8.9**: Strong hook, real value, "Scroll Stopper." Would get shares and saves.
+        - **9.0+**: RARE. Viral-quality. Only score this if it genuinely made you think "damn, that's good."
+
+        Output Schema (return ONLY valid JSON, no markdown wrapping):
         {
             "linkedin": [
-                { "content": "post 1 content...", "score": 7.2 },
-                ...
+                { "content": "full post text here...", "score": 7.2 },
+                { "content": "full post text here...", "score": 8.1 },
+                { "content": "full post text here...", "score": 7.9 }
             ],
             "reddit": [
                 { "title": "Post Title", "content": "post body...", "score": 8.5 },
                 ...
             ],
             "twitter": [
-                {
-                    "thread": [
-                        "Tweet 1 text (max 280 chars)...",
-                        "Tweet 2 text (max 280 chars)...",
-                        "Tweet 3 text (max 280 chars)..."
-                    ],
-                    "score": 8.0
-                },
+                { "thread": ["Tweet 1...", "Tweet 2...", "Tweet 3..."], "score": 8.0 },
                 ...
             ]
         }`;
 
         console.log("Sending prompt to Gemini...");
-        const result = await model.generateContent(prompt);
+        const result = await tryGenerateWithFallback(prompt);
         console.log("Received response from Gemini");
         const response = await result.response;
         let text = response.text();
         console.log("Raw text response:", text.substring(0, 500) + "...");
+
+        // Strip markdown code block wrapping if present
+        text = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
 
         // Smart JSON extraction that fixes "Bad control character" errors
         // by escaping newlines inside strings.
@@ -241,12 +319,12 @@ export async function POST(req) {
                         result += char;
                     }
                 } else {
-                    // Not in string
+                    // Not in string - track ALL bracket types for proper depth
                     if (char === '"') {
                         inString = true;
-                    } else if (char === openChar) {
+                    } else if (char === '{' || char === '[') {
                         depth++;
-                    } else if (char === closeChar) {
+                    } else if (char === '}' || char === ']') {
                         depth--;
                     }
                     result += char;
@@ -303,17 +381,36 @@ export async function POST(req) {
                 }
             }
 
-            // Add images to LinkedIn posts
-            if (posts.linkedin && Array.isArray(posts.linkedin)) {
-                console.log("Fetching images for LinkedIn posts...");
+            // Add themed images to LinkedIn posts using content-based theme matching
+            if (posts.linkedin && Array.isArray(posts.linkedin) && posts.linkedin.length > 0) {
+                console.log("Fetching themed images for LinkedIn posts...");
+
+                // Pick a unique theme for each post based on content
+                const usedThemes = new Set();
+                const themes = posts.linkedin.map(post => {
+                    const theme = pickImageTheme(post.content, usedThemes);
+                    usedThemes.add(theme);
+                    return theme;
+                });
+
+                console.log("Selected image themes:", themes);
+
+                // Fetch all images in parallel
+                const imagePromises = themes.map(theme => getThemedPexelsImage(theme));
+                const images = await Promise.all(imagePromises);
+
+                const usedUrls = new Set();
                 for (let i = 0; i < posts.linkedin.length; i++) {
-                    const post = posts.linkedin[i];
-                    const searchQuery = product_info.substring(0, 100);
-                    const image = await searchPexelsImage(searchQuery);
-                    if (image) {
+                    const image = images[i];
+                    if (image && !usedUrls.has(image.url)) {
                         posts.linkedin[i].image = image;
-                        console.log(`Image found for post ${i + 1}`);
+                        usedUrls.add(image.url);
+                        console.log(`Themed image (${themes[i]}) found for post ${i + 1}`);
+                    } else {
+                        console.log(`No image for post ${i + 1}, posting without image`);
                     }
+                    // Clean up
+                    delete posts.linkedin[i].image_keywords;
                 }
             }
         }

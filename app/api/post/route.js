@@ -29,12 +29,26 @@ async function uploadImageToLinkedIn(imageUrl, accessToken, author) {
         const uploadUrl = registerResponse.data.value.uploadMechanism["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"].uploadUrl;
         const asset = registerResponse.data.value.asset;
 
-        const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-        const imageBuffer = Buffer.from(imageResponse.data, 'binary');
+        let imageBuffer;
+        let contentType = "image/jpeg";
+
+        // Handle base64 data URLs (from AI-generated images) vs regular URLs
+        if (imageUrl.startsWith('data:')) {
+            const matches = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+            if (matches) {
+                contentType = matches[1];
+                imageBuffer = Buffer.from(matches[2], 'base64');
+            } else {
+                throw new Error("Invalid base64 data URL format");
+            }
+        } else {
+            const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+            imageBuffer = Buffer.from(imageResponse.data, 'binary');
+        }
 
         await axios.put(uploadUrl, imageBuffer, {
             headers: {
-                "Content-Type": "image/jpeg",
+                "Content-Type": contentType,
                 Authorization: `Bearer ${accessToken}`,
             }
         });
