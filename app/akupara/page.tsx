@@ -52,14 +52,19 @@ create table platform_scores (
 );`;
 
 // ─── Citation classifier SQL ──────────────────────────────────────────────────
+// Extract the core brand token (first word, lowercase, alphanumeric only)
+// e.g. "Everlane (Tread sneakers)" → "everlane", "Hands of India" → "hands"
+// Then check if that token appears in the URL's domain portion.
 const CLASSIFY = `CASE
     WHEN c.url ILIKE '%twitter.com%' OR c.url ILIKE '%x.com%'
       OR c.url ILIKE '%linkedin.com%' OR c.url ILIKE '%facebook.com%'
       OR c.url ILIKE '%instagram.com%' OR c.url ILIKE '%reddit.com%'
       OR c.url ILIKE '%youtube.com%'  OR c.url ILIKE '%tiktok.com%'
+      OR c.url ILIKE '%pinterest.com%' OR c.url ILIKE '%threads.net%'
       THEN 'Social Media'
     WHEN c.brand IS NOT NULL AND c.brand != ''
-      AND c.url ILIKE '%' || LOWER(REPLACE(c.brand,' ','')) || '%'
+      AND LENGTH(LOWER(REGEXP_REPLACE(SPLIT_PART(c.brand, ' ', 1), '[^a-z0-9]', '', 'g'))) >= 3
+      AND c.url ILIKE '%' || LOWER(REGEXP_REPLACE(SPLIT_PART(c.brand, ' ', 1), '[^a-z0-9]', '', 'g')) || '%'
       THEN 'Own Brand'
     ELSE 'Third Party Authority'
   END`;
