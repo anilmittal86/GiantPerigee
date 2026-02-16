@@ -69,217 +69,185 @@ const CLASSIFY = `CASE
     ELSE 'Third Party Authority'
   END`;
 
-// ─── Pre-wired citation reports ───────────────────────────────────────────────
-// Ordered by actionability: "what content to create" and "where to place it" first
-const CITATION_REPORTS = [
-  // ── WHAT CONTENT TO CREATE ─────────────────────────────────────────────────
+// ─── SQL helpers ─────────────────────────────────────────────────────────────
+const esc = (s: string) => s.replace(/'/g, "''");
+
+const CATEGORIES_SQL = `SELECT DISTINCT product_category FROM runs
+WHERE product_category IS NOT NULL ORDER BY product_category`;
+
+const DATA_BANNER_SQL = (cat: string) => `SELECT
+  COUNT(DISTINCT c.citation_id) AS total_citations,
+  COUNT(DISTINCT c.brand) AS brands_analyzed,
+  COUNT(DISTINCT r2.platform) AS platforms,
+  COUNT(DISTINCT ru.run_id) AS runs
+FROM citations c
+JOIN runs ru ON c.run_id = ru.run_id
+JOIN parsed_responses pr ON c.parsed_id = pr.parsed_id
+JOIN responses r2 ON pr.response_id = r2.response_id
+WHERE ru.product_category = '${esc(cat)}'
+  AND c.url IS NOT NULL`;
+
+// ─── Citation Intelligence Reports ───────────────────────────────────────────
+// Category-filtered. 5 reports answering 3 questions.
+type CitReport = {
+  id: string; icon: string; title: string;
+  question: string; desc: string; reddit_angle: string;
+  sql: (cat: string) => string;
+};
+
+const CITATION_REPORTS: CitReport[] = [
+  // ── Q1+Q2: WHAT CONTENT TO CREATE & WHERE ──────────────────────────────────
   {
-    id: "intent_brands", icon: "⚡",
-    title: "Which Queries Surface Your Brand (and Which Don't)",
-    desc: "Per intent: where your brand appears, its rank, and the gaps where it's missing",
-    reddit_angle: "We mapped every question type to see where brands appear in AI answers — and more importantly where they don't",
-    sql: `WITH run_brand AS (
-  SELECT run_id, product_name AS brand FROM runs WHERE product_name IS NOT NULL
-),
-all_intents AS (
-  SELECT DISTINCT p.intent, p.context, r.platform, rb.brand, rb.run_id
-  FROM prompts p
-  JOIN responses r ON r.prompt_id = p.prompt_id AND r.run_id = p.run_id
-  JOIN run_brand rb ON rb.run_id = p.run_id
-  WHERE p.intent IS NOT NULL
-),
-brand_ranks AS (
-  SELECT pr.parsed_id, pr.response_id, kv.key AS brand_mentioned,
+    id: "intent_citations", icon: "⚡",
+    question: "What content to create & where to place it",
+    title: "Intent → Citations & Placement",
+    desc: "Which intent types generate citations in this category, and from what source types",
+    reddit_angle: "We analyzed AI citation patterns by question type — comparison queries generate way more third-party citations than recommendations",
+    sql: (cat) => `SELECT p.intent,
+  COUNT(DISTINCT c.citation_id) AS citations,
+  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Own Brand' THEN 1 ELSE 0 END)::numeric
+    / NULLIF(COUNT(c.citation_id), 0), 0) AS own_brand_pct,
+  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Social Media' THEN 1 ELSE 0 END)::numeric
+    / NULLIF(COUNT(c.citation_id), 0), 0) AS social_pct,
+  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END)::numeric
+    / NULLIF(COUNT(c.citation_id), 0), 0) AS authority_pct
+FROM citations c
+JOIN parsed_responses pr ON c.parsed_id = pr.parsed_id
+JOIN responses r ON pr.response_id = r.response_id
+JOIN prompts p ON r.prompt_id = p.prompt_id AND r.run_id = p.run_id
+JOIN runs ru ON p.run_id = ru.run_id
+WHERE ru.product_category = '${esc(cat)}'
+  AND c.url IS NOT NULL AND p.intent IS NOT NULL
+GROUP BY p.intent
+HAVING COUNT(DISTINCT c.citation_id) >= 2
+ORDER BY citations DESC`,
+  },
+  {
+    id: "winning_attributes", icon: "◆",
+    question: "What content to create",
+    title: "Winning Attributes for Rank #1",
+    desc: "In this category, which brand attributes correlate with ranking #1 vs #3+",
+    reddit_angle: "We compared brand attributes of #1-ranked vs lower-ranked brands in AI responses — the winning traits are not what you'd expect",
+    sql: (cat) => `WITH brand_ranks AS (
+  SELECT pr.parsed_id, kv.key AS brand,
     MIN((rv.value)::numeric) AS best_rank
-  FROM parsed_responses pr,
+  FROM parsed_responses pr
+  JOIN runs ru ON pr.run_id = ru.run_id,
     jsonb_each(pr.ranking) AS kv,
     jsonb_array_elements_text(
       CASE WHEN jsonb_typeof(kv.value) = 'array' THEN kv.value ELSE jsonb_build_array(kv.value) END
     ) AS rv
-  GROUP BY pr.parsed_id, pr.response_id, kv.key
+  WHERE ru.product_category = '${esc(cat)}'
+  GROUP BY pr.parsed_id, kv.key
 ),
-scored AS (
-  SELECT ai.intent, ai.context, ai.platform, ai.brand,
-    CASE WHEN br.best_rank IS NOT NULL THEN 'PRESENT' ELSE 'MISSING' END AS status,
-    br.best_rank
-  FROM all_intents ai
-  JOIN responses r ON r.prompt_id = (
-    SELECT p2.prompt_id FROM prompts p2
-    WHERE p2.run_id = ai.run_id AND p2.intent = ai.intent
-      AND (p2.context = ai.context OR (p2.context IS NULL AND ai.context IS NULL))
-    LIMIT 1
-  ) AND r.run_id = ai.run_id AND r.platform = ai.platform
-  JOIN parsed_responses pr ON pr.response_id = r.response_id
-  LEFT JOIN brand_ranks br ON br.parsed_id = pr.parsed_id
-    AND LOWER(br.brand_mentioned) = LOWER(ai.brand)
-)
-SELECT brand, intent, context, platform, status,
-  ROUND(AVG(best_rank), 1) AS avg_rank,
-  COUNT(*) AS responses
-FROM scored
-GROUP BY brand, intent, context, platform, status
-ORDER BY brand, status DESC, avg_rank ASC NULLS LAST;`,
-  },
-  {
-    id: "persona_intent_attrs", icon: "◆",
-    title: "Persona × Intent × Attributes",
-    desc: "Which persona+intent combos trigger which brand attributes",
-    reddit_angle: "The combination of who asks and how they ask completely changes which brand qualities AI highlights",
-    sql: `WITH brand_attrs AS (
-  SELECT pr.parsed_id, pr.response_id, kv.key AS brand_name, attr.value AS attribute
-  FROM parsed_responses pr,
+brand_attrs AS (
+  SELECT pr.parsed_id, kv.key AS brand, attr.value AS attribute
+  FROM parsed_responses pr
+  JOIN runs ru ON pr.run_id = ru.run_id,
     jsonb_each(pr.attributes) AS kv,
     jsonb_array_elements_text(kv.value) AS attr
-  WHERE pr.attributes IS NOT NULL
+  WHERE ru.product_category = '${esc(cat)}'
+    AND pr.attributes IS NOT NULL
 )
-SELECT p.persona, p.intent,
-  ba.attribute,
-  COUNT(*) AS frequency,
-  COUNT(DISTINCT ba.brand_name) AS brands_with_attr,
-  STRING_AGG(DISTINCT ba.brand_name, ', ') AS example_brands
+SELECT ba.attribute,
+  SUM(CASE WHEN br.best_rank = 1 THEN 1 ELSE 0 END) AS rank_1,
+  SUM(CASE WHEN br.best_rank >= 3 THEN 1 ELSE 0 END) AS rank_3_plus,
+  ROUND(SUM(CASE WHEN br.best_rank = 1 THEN 1 ELSE 0 END)::numeric
+    / NULLIF(SUM(CASE WHEN br.best_rank >= 3 THEN 1 ELSE 0 END), 0), 1) AS win_ratio
 FROM brand_attrs ba
-JOIN responses r ON ba.response_id = r.response_id
-JOIN prompts p ON r.prompt_id = p.prompt_id AND r.run_id = p.run_id
-WHERE p.persona IS NOT NULL AND p.intent IS NOT NULL
-GROUP BY p.persona, p.intent, ba.attribute
-HAVING COUNT(*) >= 2
-ORDER BY frequency DESC LIMIT 30;`,
+JOIN brand_ranks br ON br.parsed_id = ba.parsed_id AND LOWER(br.brand) = LOWER(ba.brand)
+GROUP BY ba.attribute
+HAVING SUM(CASE WHEN br.best_rank = 1 THEN 1 ELSE 0 END)
+     + SUM(CASE WHEN br.best_rank >= 3 THEN 1 ELSE 0 END) >= 3
+ORDER BY win_ratio DESC NULLS LAST
+LIMIT 20`,
   },
+  // ── Q2: WHERE TO PUBLISH ───────────────────────────────────────────────────
   {
-    id: "intent_citation", icon: "→",
-    title: "Intent → Citation Source Type",
-    desc: "Does intent (comparison vs recommendation) change what gets cited?",
-    reddit_angle: "When you ask AI to compare brands vs recommend one, it cites completely different source types",
-    sql: `SELECT p.intent, COUNT(DISTINCT c.citation_id) AS total_citations,
-  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Own Brand' THEN 1 ELSE 0 END) / NULLIF(COUNT(c.citation_id),0), 1) AS own_brand_pct,
-  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Social Media' THEN 1 ELSE 0 END) / NULLIF(COUNT(c.citation_id),0), 1) AS social_pct,
-  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END) / NULLIF(COUNT(c.citation_id),0), 1) AS authority_pct
-FROM citations c
-JOIN parsed_responses pr ON c.parsed_id = pr.parsed_id
-JOIN responses r ON pr.response_id = r.response_id
-JOIN prompts p ON r.prompt_id = p.prompt_id AND r.run_id = p.run_id
-WHERE c.url IS NOT NULL AND p.intent IS NOT NULL
-GROUP BY p.intent HAVING COUNT(DISTINCT c.citation_id) >= 2 ORDER BY total_citations DESC;`,
-  },
-  {
-    id: "attributes_citation", icon: "⬡",
-    title: "Attribute → Citation Correlation",
-    desc: "When LLM described brand with attribute X, what source type did it cite?",
-    reddit_angle: "Brands described as 'Specialist' in AI responses get cited from authority sources far more often — data inside",
-    sql: `WITH brand_attrs AS (
-  SELECT pr.parsed_id, kv.key AS brand_name, attr.value AS attribute_text
-  FROM parsed_responses pr,
-    jsonb_each(pr.attributes) AS kv,
-    jsonb_array_elements_text(kv.value) AS attr
-  WHERE pr.attributes IS NOT NULL
-)
-SELECT ba.attribute_text AS brand_attribute,
-  COUNT(DISTINCT c.citation_id) AS citations,
-  SUM(CASE WHEN ${CLASSIFY} = 'Own Brand' THEN 1 ELSE 0 END) AS own_brand,
-  SUM(CASE WHEN ${CLASSIFY} = 'Social Media' THEN 1 ELSE 0 END) AS social,
-  SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END) AS authority,
-  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END)
-    / NULLIF(COUNT(DISTINCT c.citation_id),0), 1) AS authority_pct
-FROM brand_attrs ba
-JOIN parsed_responses pr ON ba.parsed_id = pr.parsed_id
-JOIN citations c ON c.parsed_id = pr.parsed_id AND LOWER(c.brand) = LOWER(ba.brand_name)
-WHERE c.url IS NOT NULL
-GROUP BY ba.attribute_text HAVING COUNT(DISTINCT c.citation_id) >= 2
-ORDER BY authority_pct DESC LIMIT 20;`,
-  },
-  {
-    id: "persona_citation", icon: "◎",
-    title: "Persona → Citation Type",
-    desc: "Different personas trigger different citation patterns per LLM",
-    reddit_angle: "AI cites completely different sources depending on whether you prompt as a researcher vs buyer",
-    sql: `SELECT p.persona, r.platform,
-  COUNT(DISTINCT c.citation_id) AS total_citations,
-  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Own Brand' THEN 1 ELSE 0 END) / NULLIF(COUNT(c.citation_id),0), 1) AS own_brand_pct,
-  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Social Media' THEN 1 ELSE 0 END) / NULLIF(COUNT(c.citation_id),0), 1) AS social_pct,
-  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END) / NULLIF(COUNT(c.citation_id),0), 1) AS authority_pct
-FROM citations c
-JOIN parsed_responses pr ON c.parsed_id = pr.parsed_id
-JOIN responses r ON pr.response_id = r.response_id
-JOIN prompts p ON r.prompt_id = p.prompt_id AND r.run_id = p.run_id
-WHERE c.url IS NOT NULL AND p.persona IS NOT NULL
-GROUP BY p.persona, r.platform HAVING COUNT(DISTINCT c.citation_id) >= 2
-ORDER BY p.persona, total_citations DESC;`,
-  },
-  // ── WHERE TO PLACE CONTENT ─────────────────────────────────────────────────
-  {
-    id: "brand_authority_domains", icon: "🎯",
-    title: "Where to Publish per Brand",
-    desc: "For each brand, which 3rd-party domains drive the most AI citations",
-    reddit_angle: "Want AI to cite your brand? Here are the exact third-party sites each brand gets cited from most",
-    sql: `SELECT c.brand,
-  LOWER(REGEXP_REPLACE(REGEXP_REPLACE(c.url,'^https?://(www\\.)?',''),'/.*$','')) AS domain,
+    id: "authority_domains", icon: "↗",
+    question: "Where to publish content",
+    title: "Top Authority Domains",
+    desc: "In this category, which third-party domains get cited most by LLMs",
+    reddit_angle: "These are the exact domains AI assistants cite most for this category — if you want AI visibility, get on these sites",
+    sql: (cat) => `SELECT
+  LOWER(REGEXP_REPLACE(REGEXP_REPLACE(c.url, '^https?://(www\\.)?', ''), '/.*$', '')) AS domain,
   COUNT(*) AS citations,
-  STRING_AGG(DISTINCT r.platform, ', ') AS citing_platforms,
-  ${CLASSIFY} AS citation_type
-FROM citations c
-JOIN parsed_responses pr ON c.parsed_id = pr.parsed_id
-JOIN responses r ON pr.response_id = r.response_id
-WHERE c.brand IS NOT NULL AND c.url IS NOT NULL
-  AND ${CLASSIFY} = 'Third Party Authority'
-GROUP BY c.brand, domain, citation_type
-HAVING COUNT(*) >= 1
-ORDER BY c.brand, citations DESC;`,
-  },
-  {
-    id: "top_domains", icon: "↗",
-    title: "Top Cited Domains",
-    desc: "Which domains appear most across all LLM citations — your target publications",
-    reddit_angle: "These are the domains AI assistants trust most — the authority sites that actually drive AI visibility",
-    sql: `SELECT
-  LOWER(REGEXP_REPLACE(REGEXP_REPLACE(c.url,'^https?://(www\\.)?',''),'/.*$','')) AS domain,
-  COUNT(*) AS citation_count,
   COUNT(DISTINCT c.brand) AS brands_cited,
   STRING_AGG(DISTINCT r.platform, ', ') AS platforms,
-  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) AS pct_of_all
+  ROUND(100.0 * COUNT(*)::numeric / SUM(COUNT(*)) OVER (), 1) AS pct_of_category
 FROM citations c
 JOIN parsed_responses pr ON c.parsed_id = pr.parsed_id
 JOIN responses r ON pr.response_id = r.response_id
-WHERE c.url IS NOT NULL
-GROUP BY domain HAVING COUNT(*) >= 2
-ORDER BY citation_count DESC LIMIT 20;`,
+JOIN runs ru ON c.run_id = ru.run_id
+WHERE ru.product_category = '${esc(cat)}'
+  AND c.url IS NOT NULL
+  AND ${CLASSIFY} = 'Third Party Authority'
+GROUP BY domain
+HAVING COUNT(*) >= 2
+ORDER BY citations DESC
+LIMIT 20`,
   },
   {
-    id: "brand_citation", icon: "◈",
-    title: "Brand → Citation Pattern",
-    desc: "Which brands get cited from authority vs own site vs social",
-    reddit_angle: "Some brands dominate AI citations from third-party sources while others only get cited from their own website",
-    sql: `SELECT c.brand, COUNT(*) AS total,
-  SUM(CASE WHEN ${CLASSIFY} = 'Own Brand' THEN 1 ELSE 0 END) AS own_brand,
-  SUM(CASE WHEN ${CLASSIFY} = 'Social Media' THEN 1 ELSE 0 END) AS social,
-  SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END) AS authority,
-  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END) / COUNT(*), 1) AS authority_pct
-FROM citations c WHERE c.brand IS NOT NULL AND c.url IS NOT NULL
-GROUP BY c.brand HAVING COUNT(*) >= 2 ORDER BY authority_pct DESC;`,
-  },
-  // ── LANDSCAPE / OVERVIEW ───────────────────────────────────────────────────
-  {
-    id: "by_platform", icon: "⊞",
+    id: "platform_source_mix", icon: "⊞",
+    question: "Where to publish content",
     title: "Source Mix by LLM Platform",
-    desc: "How ChatGPT, Claude & Gemini differ in what they cite",
-    reddit_angle: "Comparing citation behaviour across ChatGPT, Claude and Gemini — do they trust different source types?",
-    sql: `SELECT r.platform, ${CLASSIFY} AS citation_type,
-  COUNT(*) AS count,
-  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY r.platform), 1) AS pct_within_platform
+    desc: "In this category, how ChatGPT, Claude & Gemini differ in what they cite",
+    reddit_angle: "ChatGPT, Claude and Gemini cite completely different source types — your placement strategy should differ per platform",
+    sql: (cat) => `SELECT r.platform,
+  COUNT(*) AS total_citations,
+  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Own Brand' THEN 1 ELSE 0 END)::numeric / COUNT(*), 0) AS own_brand_pct,
+  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Social Media' THEN 1 ELSE 0 END)::numeric / COUNT(*), 0) AS social_pct,
+  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END)::numeric / COUNT(*), 0) AS authority_pct
 FROM citations c
 JOIN parsed_responses pr ON c.parsed_id = pr.parsed_id
 JOIN responses r ON pr.response_id = r.response_id
-WHERE c.url IS NOT NULL AND r.platform IS NOT NULL
-GROUP BY r.platform, citation_type ORDER BY r.platform, count DESC;`,
+JOIN runs ru ON c.run_id = ru.run_id
+WHERE ru.product_category = '${esc(cat)}'
+  AND c.url IS NOT NULL AND r.platform IS NOT NULL
+GROUP BY r.platform
+ORDER BY total_citations DESC`,
   },
+  // ── Q3: HOW DO LLMs PICK UP CONTENT ────────────────────────────────────────
   {
-    id: "source_mix", icon: "◉",
-    title: "Overall Source Mix",
-    desc: "% Own Brand vs Social Media vs Third Party",
-    reddit_angle: "How often do AI assistants cite brand pages vs social media vs independent sources?",
-    sql: `SELECT ${CLASSIFY} AS citation_type, COUNT(*) AS count,
-  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 1) AS pct
-FROM citations c WHERE c.url IS NOT NULL
-GROUP BY citation_type ORDER BY count DESC;`,
+    id: "source_vs_rank", icon: "◎",
+    question: "How LLMs pick up content",
+    title: "Does Source Type Predict Rank?",
+    desc: "In this category, do brands with more third-party citations rank higher?",
+    reddit_angle: "We checked whether the type of sources AI cites for a brand predicts its ranking — here's what the data shows",
+    sql: (cat) => `WITH brand_source AS (
+  SELECT c.brand,
+    ${CLASSIFY} AS source_type,
+    COUNT(*) AS cnt
+  FROM citations c
+  JOIN runs ru ON c.run_id = ru.run_id
+  WHERE ru.product_category = '${esc(cat)}'
+    AND c.url IS NOT NULL AND c.brand IS NOT NULL
+  GROUP BY c.brand, source_type
+),
+brand_dominant AS (
+  SELECT DISTINCT ON (brand) brand, source_type AS dominant_source
+  FROM brand_source
+  ORDER BY brand, cnt DESC
+),
+brand_kpi AS (
+  SELECT k.brand,
+    ROUND(AVG(k.avg_rank)::numeric, 1) AS avg_rank,
+    ROUND(AVG(k.avg_sentiment)::numeric, 2) AS avg_sentiment,
+    SUM(k.total_mentions) AS total_mentions
+  FROM kpi_results k
+  JOIN runs ru ON k.run_id = ru.run_id
+  WHERE ru.product_category = '${esc(cat)}'
+  GROUP BY k.brand
+)
+SELECT bd.dominant_source,
+  COUNT(*) AS brand_count,
+  ROUND(AVG(bk.avg_rank)::numeric, 1) AS avg_rank,
+  ROUND(AVG(bk.avg_sentiment)::numeric, 2) AS avg_sentiment,
+  SUM(bk.total_mentions) AS total_mentions
+FROM brand_dominant bd
+JOIN brand_kpi bk ON LOWER(bd.brand) = LOWER(bk.brand)
+GROUP BY bd.dominant_source
+ORDER BY avg_rank ASC`,
   },
 ];
 
@@ -368,6 +336,11 @@ export default function AkuparaPage() {
   const [nlCopied, setNlCopied]   = useState(false);
 
   // Citations tab
+  const [citCategory, setCitCategory] = useState("");
+  const [categories, setCategories]   = useState<string[]>([]);
+  const [catLoading, setCatLoading]   = useState(false);
+  const [dataBanner, setDataBanner]   = useState<any>(null);
+  const [bannerLoading, setBannerLoading] = useState(false);
   const [activeRpt, setActiveRpt]   = useState<string | null>(null);
   const [citStep, setCitStep]       = useState<string | null>(null);
   const [citResults, setCitResults] = useState<any[] | null>(null);
@@ -479,6 +452,34 @@ export default function AkuparaPage() {
     }
   };
 
+  /** Fetch available categories from the DB */
+  const fetchCategories = async () => {
+    setCatLoading(true);
+    try {
+      const rows = await runQuery(CATEGORIES_SQL);
+      setCategories(rows.map((r: any) => r.product_category).filter(Boolean));
+    } catch { /* runQuery sets error state */ }
+    finally { setCatLoading(false); }
+  };
+
+  /** Fetch data context banner for selected category */
+  const fetchBanner = async (cat: string) => {
+    setBannerLoading(true); setDataBanner(null);
+    try {
+      const rows = await runQuery(DATA_BANNER_SQL(cat));
+      if (rows.length > 0) setDataBanner(rows[0]);
+    } catch { /* ignore */ }
+    finally { setBannerLoading(false); }
+  };
+
+  /** When category changes, load banner and reset reports */
+  const onCategoryChange = (cat: string) => {
+    setCitCategory(cat);
+    setActiveRpt(null); setCitResults(null); setCitPost(""); setCitErr("");
+    if (cat) fetchBanner(cat);
+    else setDataBanner(null);
+  };
+
   const toneInstructions: Record<string, string> = {
     data:        "Lead with a surprising or striking data point. Hook with numbers.",
     informative: "Write an educational post that teaches something genuinely useful. No promotion.",
@@ -528,18 +529,20 @@ Rules: Never mention AkuparaAI by name. Write as genuine research findings. Unde
   };
 
   // ── Citation report run ──────────────────────────────────────────────────────
-  const runCitReport = async (rpt: typeof CITATION_REPORTS[0]) => {
+  const runCitReport = async (rpt: CitReport) => {
+    if (!citCategory) return;
     setActiveRpt(rpt.id);
     setCitErr(""); setCitResults(null); setCitPost(""); setCitSqlOpen(false); setCitCopied(false);
     try {
       setCitStep("query");
-      const results = await runQuery(rpt.sql);
+      const sql = rpt.sql(citCategory);
+      const results = await runQuery(sql);
       setCitResults(results);
 
       setCitStep("post");
       const post = await callLLM(
         buildPostSystem(citTone),
-        buildPostPrompt(rpt.reddit_angle, results, citSub, citTone)
+        buildPostPrompt(`Category: ${citCategory}. ${rpt.reddit_angle}`, results, citSub, citTone)
       );
       setCitPost(post);
       setCitStep("done");
@@ -815,12 +818,33 @@ Rules: Never mention AkuparaAI by name. Write as genuine research findings. Unde
         {/* ── TAB: Citation Intelligence ── */}
         {tab === "citations" && (
           <>
-            <div style={{ display: "flex", gap: 16, marginBottom: 20, alignItems: "flex-end", flexWrap: "wrap", ...card, padding: "16px 20px" }}>
-              <div style={{ flex: 1, minWidth: 160 }}>
-                <label style={lbl}>SUBREDDIT <span style={{ fontWeight: "400", color: S.textSub }}>(optional)</span></label>
-                <div style={{ position: "relative" }}>
-                  <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: "#777", fontSize: 12, fontWeight: "700" }}>r/</span>
-                  <input value={citSub} onChange={e => setCitSub(e.target.value)} placeholder="marketing, SEO..." style={{ ...inp, paddingLeft: 24 }} />
+            {/* Category selector + Reddit config */}
+            <div style={card}>
+              <div style={{ fontSize: 11, letterSpacing: "0.1em", color: S.amber, fontWeight: "700", marginBottom: 16 }}>CITATION INTELLIGENCE</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                <div>
+                  <label style={lbl}>CATEGORY</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {categories.length > 0 ? (
+                      <select value={citCategory} onChange={e => onCategoryChange(e.target.value)}
+                        style={{ ...inp, cursor: "pointer", flex: 1 }}>
+                        <option value="">Select a category...</option>
+                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    ) : (
+                      <button onClick={fetchCategories} disabled={!cfgOk || catLoading}
+                        style={{ ...inp, cursor: cfgOk ? "pointer" : "not-allowed", textAlign: "left", color: S.textSub, flex: 1 }}>
+                        {catLoading ? "Loading..." : "Load categories from DB"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label style={lbl}>SUBREDDIT <span style={{ fontWeight: "400", color: S.textSub }}>(optional)</span></label>
+                  <div style={{ position: "relative" }}>
+                    <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: "#777", fontSize: 12, fontWeight: "700" }}>r/</span>
+                    <input value={citSub} onChange={e => setCitSub(e.target.value)} placeholder="marketing, SEO..." style={{ ...inp, paddingLeft: 24 }} />
+                  </div>
                 </div>
               </div>
               <div>
@@ -829,46 +853,78 @@ Rules: Never mention AkuparaAI by name. Write as genuine research findings. Unde
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
-              {CITATION_REPORTS.map(r => {
-                const isActive = activeRpt === r.id;
-                const isRunning = isActive && citStep && citStep !== "done" && citStep !== "error";
-                return (
-                  <div key={r.id} onClick={() => !isRunning && cfgOk && runCitReport(r)} style={{
-                    background: isActive ? S.amberLight : S.card,
-                    border: `1.5px solid ${isActive ? S.amber : S.border}`,
-                    borderRadius: 6, padding: "16px 18px",
-                    cursor: cfgOk ? "pointer" : "not-allowed",
-                    boxShadow: isActive ? `0 0 0 3px rgba(196,122,10,0.12)` : S.shadow,
-                    transition: "all 0.15s", opacity: !cfgOk ? 0.5 : 1,
-                  }}>
-                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                      <span style={{ fontSize: 18, color: isActive ? S.amber : S.textSub, lineHeight: 1, marginTop: 1, flexShrink: 0 }}>{r.icon}</span>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: "700", color: isActive ? S.amber : S.text, marginBottom: 3 }}>{r.title}</div>
-                        <div style={{ fontSize: 11, color: S.textSub, lineHeight: 1.5 }}>{r.desc}</div>
+            {/* Data context banner */}
+            {bannerLoading && (
+              <div style={{ ...card, padding: "14px 20px", textAlign: "center", fontSize: 12, color: S.textSub }}>
+                Loading data summary...
+              </div>
+            )}
+            {dataBanner && citCategory && (
+              <div style={{ ...card, padding: "14px 20px", background: S.amberLight, border: `1px solid ${S.amber}` }}>
+                <span style={{ fontSize: 12, color: S.text, lineHeight: 1.6 }}>
+                  Based on <strong>{dataBanner.total_citations}</strong> citations across <strong>{dataBanner.brands_analyzed}</strong> brands
+                  in <strong>{citCategory}</strong> from <strong>{dataBanner.platforms}</strong> platforms
+                  ({dataBanner.runs} analysis runs)
+                </span>
+              </div>
+            )}
+
+            {/* Report cards */}
+            {citCategory && (
+              <>
+                {/* Group by question */}
+                {["What content to create & where to place it", "What content to create", "Where to publish content", "How LLMs pick up content"].map(q => {
+                  const reportsInGroup = CITATION_REPORTS.filter(r => r.question === q);
+                  if (reportsInGroup.length === 0) return null;
+                  return (
+                    <div key={q} style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 10, letterSpacing: "0.12em", color: S.textSub, fontWeight: "700", marginBottom: 10, textTransform: "uppercase" as const }}>{q}</div>
+                      <div style={{ display: "grid", gridTemplateColumns: reportsInGroup.length > 1 ? "1fr 1fr" : "1fr", gap: 12 }}>
+                        {reportsInGroup.map(r => {
+                          const isActive = activeRpt === r.id;
+                          const isRunning = isActive && citStep && citStep !== "done" && citStep !== "error";
+                          return (
+                            <div key={r.id} onClick={() => !isRunning && runCitReport(r)} style={{
+                              background: isActive ? S.amberLight : S.card,
+                              border: `1.5px solid ${isActive ? S.amber : S.border}`,
+                              borderRadius: 6, padding: "16px 18px",
+                              cursor: "pointer",
+                              boxShadow: isActive ? `0 0 0 3px rgba(196,122,10,0.12)` : S.shadow,
+                              transition: "all 0.15s",
+                            }}>
+                              <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                                <span style={{ fontSize: 18, color: isActive ? S.amber : S.textSub, lineHeight: 1, marginTop: 1, flexShrink: 0 }}>{r.icon}</span>
+                                <div>
+                                  <div style={{ fontSize: 12, fontWeight: "700", color: isActive ? S.amber : S.text, marginBottom: 3 }}>{r.title}</div>
+                                  <div style={{ fontSize: 11, color: S.textSub, lineHeight: 1.5 }}>{r.desc}</div>
+                                </div>
+                              </div>
+                              {isRunning && <div style={{ marginTop: 10, fontSize: 11, color: S.amber, display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ animation: "akupara-spin 1s linear infinite", display: "inline-block" }}>⟳</span>
+                                {citStep === "query" ? "Querying Supabase..." : "Generating post..."}
+                              </div>}
+                              {isActive && citStep === "done" && <div style={{ marginTop: 8, fontSize: 11, color: "#16a34a", fontWeight: "700" }}>✓ Done — results below</div>}
+                              {isActive && citStep === "error" && <div style={{ marginTop: 8, fontSize: 11, color: "#dc2626", fontWeight: "700" }}>✗ Error — see below</div>}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                    {isRunning && <div style={{ marginTop: 10, fontSize: 11, color: S.amber, display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ animation: "akupara-spin 1s linear infinite", display: "inline-block" }}>⟳</span>
-                      {citStep === "query" ? "Querying Supabase..." : "Generating post..."}
-                    </div>}
-                    {isActive && citStep === "done" && <div style={{ marginTop: 8, fontSize: 11, color: "#16a34a", fontWeight: "700" }}>✓ Done — results below</div>}
-                    {isActive && citStep === "error" && <div style={{ marginTop: 8, fontSize: 11, color: "#dc2626", fontWeight: "700" }}>✗ Error — see below</div>}
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </>
+            )}
 
+            {/* Results area */}
             {activeRpt && (
               <>
                 {citStep === "error" && <ErrorBox msg={citErr} />}
                 {citResults && citStep === "done" && (
                   <>
-                    <SqlToggle sql={CITATION_REPORTS.find(r => r.id === activeRpt)?.sql || ""} open={citSqlOpen} setOpen={setCitSqlOpen} />
+                    <SqlToggle sql={CITATION_REPORTS.find(r => r.id === activeRpt)?.sql(citCategory) || ""} open={citSqlOpen} setOpen={setCitSqlOpen} />
                     <div style={card}>
                       <div style={{ fontSize: 11, color: S.amber, fontWeight: "700", letterSpacing: "0.08em", marginBottom: 14 }}>
-                        {CITATION_REPORTS.find(r => r.id === activeRpt)?.title.toUpperCase()} — RESULTS
+                        {CITATION_REPORTS.find(r => r.id === activeRpt)?.title.toUpperCase()} — {citCategory.toUpperCase()}
                       </div>
                       <ResultsTable data={citResults} />
                     </div>
@@ -877,7 +933,11 @@ Rules: Never mention AkuparaAI by name. Write as genuine research findings. Unde
                 )}
               </>
             )}
+
             {!cfgOk && <p style={{ textAlign: "center", fontSize: 12, color: S.textSub }}>↑ Open Config and enter your Supabase URL + key to run reports</p>}
+            {cfgOk && !citCategory && categories.length > 0 && (
+              <p style={{ textAlign: "center", fontSize: 12, color: S.textSub, marginTop: 20 }}>Select a category above to see reports</p>
+            )}
           </>
         )}
       </div>
