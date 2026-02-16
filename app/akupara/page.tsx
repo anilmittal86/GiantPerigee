@@ -196,6 +196,30 @@ const STEPS = [
   { id: "post",  label: "Crafting Reddit post..." },
 ];
 
+// ─── Setup SQL for the RPC function ──────────────────────────────────────────
+const SETUP_SQL = `-- Run this in your Supabase SQL Editor (one-time setup)
+CREATE OR REPLACE FUNCTION public.execute_readonly_query(query_text text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET statement_timeout = '10s'
+AS $$
+DECLARE
+  result jsonb;
+BEGIN
+  -- Block anything that is not a SELECT
+  IF UPPER(TRIM(query_text)) !~ '^(SELECT|WITH)' THEN
+    RAISE EXCEPTION 'Only SELECT / WITH queries are allowed';
+  END IF;
+
+  EXECUTE 'SELECT jsonb_agg(row_to_json(t))
+           FROM (' || query_text || ') t'
+    INTO result;
+
+  RETURN COALESCE(result, '[]'::jsonb);
+END;
+$$;`;
+
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const S = {
   amber: "#c47a0a", amberLight: "#fdf0e0",
@@ -228,6 +252,9 @@ export default function AkuparaPage() {
   const [schema, setSchema] = useState(DEFAULT_SCHEMA);
   const [showConfig, setShowConfig] = useState(true);
   const cfgOk = sbUrl && sbKey;
+  const [fnMissing, setFnMissing] = useState(false);
+  const [fnChecked, setFnChecked] = useState(false);
+  const [setupCopied, setSetupCopied] = useState(false);
 
   // NL tab
   const [question, setQuestion]   = useState("");
@@ -277,8 +304,26 @@ export default function AkuparaPage() {
       body: JSON.stringify({ query_text: sql }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.message || data.hint || "Supabase query failed");
+    if (!res.ok) {
+      const msg = data.message || data.hint || "Supabase query failed";
+      if (msg.includes("execute_readonly_query") && (msg.includes("schema cache") || msg.includes("does not exist"))) {
+        setFnMissing(true);
+        throw new Error("The execute_readonly_query function is missing from your Supabase database. See the setup instructions in the Config panel.");
+      }
+      throw new Error(msg);
+    }
+    setFnMissing(false);
+    setFnChecked(true);
     return Array.isArray(data) ? data : [];
+  };
+
+  /** Quick check that the RPC function exists */
+  const testConnection = async () => {
+    try {
+      await runQuery("SELECT 1 AS ok");
+    } catch {
+      // error state already set by runQuery
+    }
   };
 
   const toneInstructions: Record<string, string> = {
@@ -548,9 +593,36 @@ Rules: Never mention AkuparaAI by name. Write as genuine research findings. Unde
               <textarea value={schema} onChange={e => setSchema(e.target.value)} rows={5}
                 style={{ ...inp, color: S.green, fontSize: 11, resize: "vertical", lineHeight: 1.6 }} />
             </div>
-            <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+            <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button onClick={testConnection} disabled={!sbUrl || !sbKey} style={{
+                background: S.input, border: `1px solid ${S.border}`, borderRadius: 4,
+                color: S.textMid, padding: "8px 18px", fontSize: 12, cursor: !sbUrl || !sbKey ? "not-allowed" : "pointer",
+                letterSpacing: "0.06em", fontWeight: "600", fontFamily: "inherit",
+              }}>{fnChecked && !fnMissing ? "● Connected" : "Test Connection"}</button>
               <PrimaryBtn label="Save & Close" onClick={() => setShowConfig(false)} disabled={!sbUrl || !sbKey} />
             </div>
+            {fnMissing && (
+              <div style={{ marginTop: 16, background: "#fffbeb", border: "1px solid #f59e0b", borderRadius: 6, padding: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: "700", color: "#b45309", marginBottom: 8, letterSpacing: "0.08em" }}>
+                  SETUP REQUIRED — RPC FUNCTION MISSING
+                </div>
+                <p style={{ fontSize: 12, color: "#92400e", lineHeight: 1.6, margin: "0 0 10px" }}>
+                  The <code style={{ background: "#fef3c7", padding: "1px 4px", borderRadius: 3 }}>execute_readonly_query</code> function does not exist in your Supabase database.
+                  Copy the SQL below and run it in your <strong>Supabase SQL Editor</strong> (one-time setup).
+                </p>
+                <pre style={{ background: "#1a1a1a", color: "#4ade80", padding: 14, borderRadius: 4, fontSize: 11, lineHeight: 1.7, whiteSpace: "pre-wrap", margin: "0 0 10px", overflowX: "auto" }}>{SETUP_SQL}</pre>
+                <button onClick={() => { navigator.clipboard.writeText(SETUP_SQL); setSetupCopied(true); setTimeout(() => setSetupCopied(false), 2000); }}
+                  style={{
+                    background: setupCopied ? "#f0fdf4" : S.input,
+                    border: `1px solid ${setupCopied ? "#4ade80" : S.border}`,
+                    borderRadius: 4, color: setupCopied ? "#16a34a" : S.textMid,
+                    padding: "6px 14px", fontSize: 11, cursor: "pointer",
+                    fontWeight: "600", fontFamily: "inherit",
+                  }}>
+                  {setupCopied ? "✓ SQL Copied" : "Copy SQL"}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
