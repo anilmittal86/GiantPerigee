@@ -119,7 +119,7 @@ JOIN runs ru ON p.run_id = ru.run_id
 WHERE ru.product_category = '${esc(cat)}'
   AND c.url IS NOT NULL AND p.intent IS NOT NULL
 GROUP BY p.intent
-HAVING COUNT(DISTINCT c.citation_id) >= 2
+HAVING COUNT(DISTINCT c.citation_id) >= 3
 ORDER BY citations DESC`,
   },
   {
@@ -183,7 +183,7 @@ WHERE ru.product_category = '${esc(cat)}'
   AND c.url IS NOT NULL
   AND ${CLASSIFY} = 'Third Party Authority'
 GROUP BY domain
-HAVING COUNT(*) >= 2
+HAVING COUNT(*) >= 3
 ORDER BY citations DESC
 LIMIT 20`,
   },
@@ -205,6 +205,7 @@ JOIN runs ru ON c.run_id = ru.run_id
 WHERE ru.product_category = '${esc(cat)}'
   AND c.url IS NOT NULL AND r.platform IS NOT NULL
 GROUP BY r.platform
+HAVING COUNT(*) >= 5
 ORDER BY total_citations DESC`,
   },
   // ── Q3: HOW DO LLMs PICK UP CONTENT ────────────────────────────────────────
@@ -247,6 +248,7 @@ SELECT bd.dominant_source,
 FROM brand_dominant bd
 JOIN brand_kpi bk ON LOWER(bd.brand) = LOWER(bk.brand)
 GROUP BY bd.dominant_source
+HAVING COUNT(*) >= 5
 ORDER BY avg_rank ASC`,
   },
 ];
