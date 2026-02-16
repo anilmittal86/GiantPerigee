@@ -75,25 +75,50 @@ const CITATION_REPORTS = [
   // ── WHAT CONTENT TO CREATE ─────────────────────────────────────────────────
   {
     id: "intent_brands", icon: "⚡",
-    title: "Which Queries Surface Which Brands",
-    desc: "Intent → brands that get mentioned and their average rank",
-    reddit_angle: "We analysed which question types make AI surface specific brands — intent matters more than keywords",
-    sql: `SELECT p.intent, p.context,
-  kv.key AS brand,
-  COUNT(*) AS mentions,
-  ROUND(AVG((rv.value)::float), 2) AS avg_rank,
-  STRING_AGG(DISTINCT r.platform, ', ') AS platforms
-FROM parsed_responses pr
-JOIN responses r ON pr.response_id = r.response_id
-JOIN prompts p ON r.prompt_id = p.prompt_id AND r.run_id = p.run_id,
-  jsonb_each(pr.ranking) AS kv,
-  jsonb_array_elements_text(
-    CASE WHEN jsonb_typeof(kv.value) = 'array' THEN kv.value ELSE jsonb_build_array(kv.value) END
-  ) AS rv
-WHERE p.intent IS NOT NULL
-GROUP BY p.intent, p.context, kv.key
-HAVING COUNT(*) >= 2
-ORDER BY mentions DESC, avg_rank ASC LIMIT 30;`,
+    title: "Which Queries Surface Your Brand (and Which Don't)",
+    desc: "Per intent: where your brand appears, its rank, and the gaps where it's missing",
+    reddit_angle: "We mapped every question type to see where brands appear in AI answers — and more importantly where they don't",
+    sql: `WITH run_brand AS (
+  SELECT run_id, product_name AS brand FROM runs WHERE product_name IS NOT NULL
+),
+all_intents AS (
+  SELECT DISTINCT p.intent, p.context, r.platform, rb.brand, rb.run_id
+  FROM prompts p
+  JOIN responses r ON r.prompt_id = p.prompt_id AND r.run_id = p.run_id
+  JOIN run_brand rb ON rb.run_id = p.run_id
+  WHERE p.intent IS NOT NULL
+),
+brand_ranks AS (
+  SELECT pr.parsed_id, pr.response_id, kv.key AS brand_mentioned,
+    MIN((rv.value)::numeric) AS best_rank
+  FROM parsed_responses pr,
+    jsonb_each(pr.ranking) AS kv,
+    jsonb_array_elements_text(
+      CASE WHEN jsonb_typeof(kv.value) = 'array' THEN kv.value ELSE jsonb_build_array(kv.value) END
+    ) AS rv
+  GROUP BY pr.parsed_id, pr.response_id, kv.key
+),
+scored AS (
+  SELECT ai.intent, ai.context, ai.platform, ai.brand,
+    CASE WHEN br.best_rank IS NOT NULL THEN 'PRESENT' ELSE 'MISSING' END AS status,
+    br.best_rank
+  FROM all_intents ai
+  JOIN responses r ON r.prompt_id = (
+    SELECT p2.prompt_id FROM prompts p2
+    WHERE p2.run_id = ai.run_id AND p2.intent = ai.intent
+      AND (p2.context = ai.context OR (p2.context IS NULL AND ai.context IS NULL))
+    LIMIT 1
+  ) AND r.run_id = ai.run_id AND r.platform = ai.platform
+  JOIN parsed_responses pr ON pr.response_id = r.response_id
+  LEFT JOIN brand_ranks br ON br.parsed_id = pr.parsed_id
+    AND LOWER(br.brand_mentioned) = LOWER(ai.brand)
+)
+SELECT brand, intent, context, platform, status,
+  ROUND(AVG(best_rank), 1) AS avg_rank,
+  COUNT(*) AS responses
+FROM scored
+GROUP BY brand, intent, context, platform, status
+ORDER BY brand, status DESC, avg_rank ASC NULLS LAST;`,
   },
   {
     id: "persona_intent_attrs", icon: "◆",
