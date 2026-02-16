@@ -294,7 +294,8 @@ export default function AkuparaPage() {
 
   /** Calls Supabase RPC directly — works from browser (CORS enabled) */
   const runQuery = async (sql: string): Promise<any[]> => {
-    const res = await fetch(`${sbUrl}/rest/v1/rpc/execute_readonly_query`, {
+    // First attempt
+    let res = await fetch(`${sbUrl}/rest/v1/rpc/execute_readonly_query`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -303,10 +304,47 @@ export default function AkuparaPage() {
       },
       body: JSON.stringify({ query_text: sql }),
     });
+
+    // If schema cache error, reload cache and retry once
+    if (!res.ok) {
+      const firstData = await res.json();
+      const firstMsg = firstData.message || firstData.hint || "";
+      if (firstMsg.includes("schema cache")) {
+        // Ask PostgREST to reload its schema cache
+        await fetch(`${sbUrl}/rest/v1/`, {
+          method: "HEAD",
+          headers: {
+            apikey: sbKey,
+            Authorization: `Bearer ${sbKey}`,
+            "Accept-Profile": "public",
+          },
+        });
+        // Wait briefly for cache reload
+        await new Promise(r => setTimeout(r, 1500));
+        // Retry the query
+        res = await fetch(`${sbUrl}/rest/v1/rpc/execute_readonly_query`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: sbKey,
+            Authorization: `Bearer ${sbKey}`,
+          },
+          body: JSON.stringify({ query_text: sql }),
+        });
+      } else {
+        // Not a cache error — handle normally
+        if (firstMsg.includes("execute_readonly_query") && (firstMsg.includes("could not find") || firstMsg.includes("does not exist"))) {
+          setFnMissing(true);
+          throw new Error("The execute_readonly_query function is missing from your Supabase database. See the setup instructions in the Config panel.");
+        }
+        throw new Error(firstMsg || "Supabase query failed");
+      }
+    }
+
     const data = await res.json();
     if (!res.ok) {
       const msg = data.message || data.hint || "Supabase query failed";
-      if (msg.includes("execute_readonly_query") && (msg.includes("schema cache") || msg.includes("does not exist"))) {
+      if (msg.includes("execute_readonly_query") && (msg.includes("could not find") || msg.includes("does not exist"))) {
         setFnMissing(true);
         throw new Error("The execute_readonly_query function is missing from your Supabase database. See the setup instructions in the Config panel.");
       }
@@ -314,15 +352,28 @@ export default function AkuparaPage() {
     }
     setFnMissing(false);
     setFnChecked(true);
+    // The function returns jsonb (a single value), not rows
+    if (Array.isArray(data)) return data;
+    if (data === null) return [];
     return Array.isArray(data) ? data : [];
   };
 
   /** Quick check that the RPC function exists */
+  const [testLoading, setTestLoading] = useState(false);
   const testConnection = async () => {
+    setTestLoading(true);
     try {
+      // Notify PostgREST to reload schema cache before testing
+      await fetch(`${sbUrl}/rest/v1/`, {
+        method: "HEAD",
+        headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` },
+      });
+      await new Promise(r => setTimeout(r, 1500));
       await runQuery("SELECT 1 AS ok");
     } catch {
       // error state already set by runQuery
+    } finally {
+      setTestLoading(false);
     }
   };
 
@@ -598,7 +649,7 @@ Rules: Never mention AkuparaAI by name. Write as genuine research findings. Unde
                 background: S.input, border: `1px solid ${S.border}`, borderRadius: 4,
                 color: S.textMid, padding: "8px 18px", fontSize: 12, cursor: !sbUrl || !sbKey ? "not-allowed" : "pointer",
                 letterSpacing: "0.06em", fontWeight: "600", fontFamily: "inherit",
-              }}>{fnChecked && !fnMissing ? "● Connected" : "Test Connection"}</button>
+              }}>{testLoading ? "Testing..." : fnChecked && !fnMissing ? "● Connected" : "Test Connection"}</button>
               <PrimaryBtn label="Save & Close" onClick={() => setShowConfig(false)} disabled={!sbUrl || !sbKey} />
             </div>
             {fnMissing && (
