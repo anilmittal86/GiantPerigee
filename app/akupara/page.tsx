@@ -247,10 +247,10 @@ const inp: React.CSSProperties = {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AkuparaPage() {
   const [tab, setTab] = useState<"nl" | "citations">("nl");
-  const [sbUrl, setSbUrl] = useState("");
-  const [sbKey, setSbKey] = useState("");
+  const [sbUrl, setSbUrl] = useState(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
+  const [sbKey, setSbKey] = useState(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "");
   const [schema, setSchema] = useState(DEFAULT_SCHEMA);
-  const [showConfig, setShowConfig] = useState(true);
+  const [showConfig, setShowConfig] = useState(!process.env.NEXT_PUBLIC_SUPABASE_URL);
   const cfgOk = sbUrl && sbKey;
   const [fnMissing, setFnMissing] = useState(false);
   const [fnChecked, setFnChecked] = useState(false);
@@ -294,6 +294,8 @@ export default function AkuparaPage() {
 
   /** Calls Supabase RPC directly — works from browser (CORS enabled) */
   const runQuery = async (sql: string): Promise<any[]> => {
+    // Strip trailing semicolons — they cause syntax errors inside the RPC wrapper
+    const cleanSql = sql.replace(/;\s*$/, "");
     // First attempt
     let res = await fetch(`${sbUrl}/rest/v1/rpc/execute_readonly_query`, {
       method: "POST",
@@ -302,7 +304,7 @@ export default function AkuparaPage() {
         apikey: sbKey,
         Authorization: `Bearer ${sbKey}`,
       },
-      body: JSON.stringify({ query_text: sql }),
+      body: JSON.stringify({ query_text: cleanSql }),
     });
 
     // If schema cache error, reload cache and retry once
@@ -329,7 +331,7 @@ export default function AkuparaPage() {
             apikey: sbKey,
             Authorization: `Bearer ${sbKey}`,
           },
-          body: JSON.stringify({ query_text: sql }),
+          body: JSON.stringify({ query_text: cleanSql }),
         });
       } else {
         // Not a cache error — handle normally
