@@ -70,43 +70,71 @@ const CLASSIFY = `CASE
   END`;
 
 // ─── Pre-wired citation reports ───────────────────────────────────────────────
+// Ordered by actionability: "what content to create" and "where to place it" first
 const CITATION_REPORTS = [
+  // ── WHAT CONTENT TO CREATE ─────────────────────────────────────────────────
   {
-    id: "source_mix", icon: "◉",
-    title: "Overall Source Mix",
-    desc: "% Own Brand vs Social Media vs Third Party",
-    reddit_angle: "How often do AI assistants cite brand pages vs social media vs independent sources?",
-    sql: `SELECT ${CLASSIFY} AS citation_type, COUNT(*) AS count,
-  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 1) AS pct
-FROM citations c WHERE c.url IS NOT NULL
-GROUP BY citation_type ORDER BY count DESC;`,
+    id: "intent_brands", icon: "⚡",
+    title: "Which Queries Surface Which Brands",
+    desc: "Intent → brands that get mentioned and their average rank",
+    reddit_angle: "We analysed which question types make AI surface specific brands — intent matters more than keywords",
+    sql: `SELECT p.intent, p.context,
+  kv.key AS brand,
+  COUNT(*) AS mentions,
+  ROUND(AVG((rv.value)::float), 2) AS avg_rank,
+  STRING_AGG(DISTINCT r.platform, ', ') AS platforms
+FROM parsed_responses pr
+JOIN responses r ON pr.response_id = r.response_id
+JOIN prompts p ON r.prompt_id = p.prompt_id AND r.run_id = p.run_id,
+  jsonb_each(pr.ranking) AS kv,
+  jsonb_array_elements_text(
+    CASE WHEN jsonb_typeof(kv.value) = 'array' THEN kv.value ELSE jsonb_build_array(kv.value) END
+  ) AS rv
+WHERE p.intent IS NOT NULL
+GROUP BY p.intent, p.context, kv.key
+HAVING COUNT(*) >= 2
+ORDER BY mentions DESC, avg_rank ASC LIMIT 30;`,
   },
   {
-    id: "by_platform", icon: "⊞",
-    title: "Source Mix by LLM Platform",
-    desc: "How ChatGPT, Claude & Gemini differ in what they cite",
-    reddit_angle: "Comparing citation behaviour across ChatGPT, Claude and Gemini — do they trust different source types?",
-    sql: `SELECT r.platform, ${CLASSIFY} AS citation_type,
-  COUNT(*) AS count,
-  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY r.platform), 1) AS pct_within_platform
+    id: "persona_intent_attrs", icon: "◆",
+    title: "Persona × Intent × Attributes",
+    desc: "Which persona+intent combos trigger which brand attributes",
+    reddit_angle: "The combination of who asks and how they ask completely changes which brand qualities AI highlights",
+    sql: `WITH brand_attrs AS (
+  SELECT pr.parsed_id, pr.response_id, kv.key AS brand_name, attr.value AS attribute
+  FROM parsed_responses pr,
+    jsonb_each(pr.attributes) AS kv,
+    jsonb_array_elements_text(kv.value) AS attr
+  WHERE pr.attributes IS NOT NULL
+)
+SELECT p.persona, p.intent,
+  ba.attribute,
+  COUNT(*) AS frequency,
+  COUNT(DISTINCT ba.brand_name) AS brands_with_attr,
+  STRING_AGG(DISTINCT ba.brand_name, ', ') AS example_brands
+FROM brand_attrs ba
+JOIN responses r ON ba.response_id = r.response_id
+JOIN prompts p ON r.prompt_id = p.prompt_id AND r.run_id = p.run_id
+WHERE p.persona IS NOT NULL AND p.intent IS NOT NULL
+GROUP BY p.persona, p.intent, ba.attribute
+HAVING COUNT(*) >= 2
+ORDER BY frequency DESC LIMIT 30;`,
+  },
+  {
+    id: "intent_citation", icon: "→",
+    title: "Intent → Citation Source Type",
+    desc: "Does intent (comparison vs recommendation) change what gets cited?",
+    reddit_angle: "When you ask AI to compare brands vs recommend one, it cites completely different source types",
+    sql: `SELECT p.intent, COUNT(DISTINCT c.citation_id) AS total_citations,
+  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Own Brand' THEN 1 ELSE 0 END) / NULLIF(COUNT(c.citation_id),0), 1) AS own_brand_pct,
+  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Social Media' THEN 1 ELSE 0 END) / NULLIF(COUNT(c.citation_id),0), 1) AS social_pct,
+  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END) / NULLIF(COUNT(c.citation_id),0), 1) AS authority_pct
 FROM citations c
 JOIN parsed_responses pr ON c.parsed_id = pr.parsed_id
 JOIN responses r ON pr.response_id = r.response_id
-WHERE c.url IS NOT NULL AND r.platform IS NOT NULL
-GROUP BY r.platform, citation_type ORDER BY r.platform, count DESC;`,
-  },
-  {
-    id: "brand_citation", icon: "◈",
-    title: "Brand → Citation Pattern",
-    desc: "Which brands get cited from authority vs own site vs social",
-    reddit_angle: "Some brands dominate AI citations from third-party sources while others only get cited from their own website",
-    sql: `SELECT c.brand, COUNT(*) AS total,
-  SUM(CASE WHEN ${CLASSIFY} = 'Own Brand' THEN 1 ELSE 0 END) AS own_brand,
-  SUM(CASE WHEN ${CLASSIFY} = 'Social Media' THEN 1 ELSE 0 END) AS social,
-  SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END) AS authority,
-  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END) / COUNT(*), 1) AS authority_pct
-FROM citations c WHERE c.brand IS NOT NULL AND c.url IS NOT NULL
-GROUP BY c.brand HAVING COUNT(*) >= 2 ORDER BY authority_pct DESC;`,
+JOIN prompts p ON r.prompt_id = p.prompt_id AND r.run_id = p.run_id
+WHERE c.url IS NOT NULL AND p.intent IS NOT NULL
+GROUP BY p.intent HAVING COUNT(DISTINCT c.citation_id) >= 2 ORDER BY total_citations DESC;`,
   },
   {
     id: "attributes_citation", icon: "⬡",
@@ -135,22 +163,6 @@ GROUP BY ba.attribute_text HAVING COUNT(DISTINCT c.citation_id) >= 2
 ORDER BY authority_pct DESC LIMIT 20;`,
   },
   {
-    id: "intent_citation", icon: "→",
-    title: "Prompt Intent → Citation Type",
-    desc: "Does intent (comparison vs recommendation) change what gets cited?",
-    reddit_angle: "When you ask AI to compare brands vs recommend one, it cites completely different source types",
-    sql: `SELECT p.intent, COUNT(DISTINCT c.citation_id) AS total_citations,
-  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Own Brand' THEN 1 ELSE 0 END) / NULLIF(COUNT(c.citation_id),0), 1) AS own_brand_pct,
-  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Social Media' THEN 1 ELSE 0 END) / NULLIF(COUNT(c.citation_id),0), 1) AS social_pct,
-  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END) / NULLIF(COUNT(c.citation_id),0), 1) AS authority_pct
-FROM citations c
-JOIN parsed_responses pr ON c.parsed_id = pr.parsed_id
-JOIN responses r ON pr.response_id = r.response_id
-JOIN prompts p ON r.prompt_id = p.prompt_id AND r.run_id = p.run_id
-WHERE c.url IS NOT NULL AND p.intent IS NOT NULL
-GROUP BY p.intent HAVING COUNT(DISTINCT c.citation_id) >= 2 ORDER BY total_citations DESC;`,
-  },
-  {
     id: "persona_citation", icon: "◎",
     title: "Persona → Citation Type",
     desc: "Different personas trigger different citation patterns per LLM",
@@ -168,10 +180,30 @@ WHERE c.url IS NOT NULL AND p.persona IS NOT NULL
 GROUP BY p.persona, r.platform HAVING COUNT(DISTINCT c.citation_id) >= 2
 ORDER BY p.persona, total_citations DESC;`,
   },
+  // ── WHERE TO PLACE CONTENT ─────────────────────────────────────────────────
+  {
+    id: "brand_authority_domains", icon: "🎯",
+    title: "Where to Publish per Brand",
+    desc: "For each brand, which 3rd-party domains drive the most AI citations",
+    reddit_angle: "Want AI to cite your brand? Here are the exact third-party sites each brand gets cited from most",
+    sql: `SELECT c.brand,
+  LOWER(REGEXP_REPLACE(REGEXP_REPLACE(c.url,'^https?://(www\\.)?',''),'/.*$','')) AS domain,
+  COUNT(*) AS citations,
+  STRING_AGG(DISTINCT r.platform, ', ') AS citing_platforms,
+  ${CLASSIFY} AS citation_type
+FROM citations c
+JOIN parsed_responses pr ON c.parsed_id = pr.parsed_id
+JOIN responses r ON pr.response_id = r.response_id
+WHERE c.brand IS NOT NULL AND c.url IS NOT NULL
+  AND ${CLASSIFY} = 'Third Party Authority'
+GROUP BY c.brand, domain, citation_type
+HAVING COUNT(*) >= 1
+ORDER BY c.brand, citations DESC;`,
+  },
   {
     id: "top_domains", icon: "↗",
     title: "Top Cited Domains",
-    desc: "Which domains appear most across all LLM citations",
+    desc: "Which domains appear most across all LLM citations — your target publications",
     reddit_angle: "These are the domains AI assistants trust most — the authority sites that actually drive AI visibility",
     sql: `SELECT
   LOWER(REGEXP_REPLACE(REGEXP_REPLACE(c.url,'^https?://(www\\.)?',''),'/.*$','')) AS domain,
@@ -185,6 +217,44 @@ JOIN responses r ON pr.response_id = r.response_id
 WHERE c.url IS NOT NULL
 GROUP BY domain HAVING COUNT(*) >= 2
 ORDER BY citation_count DESC LIMIT 20;`,
+  },
+  {
+    id: "brand_citation", icon: "◈",
+    title: "Brand → Citation Pattern",
+    desc: "Which brands get cited from authority vs own site vs social",
+    reddit_angle: "Some brands dominate AI citations from third-party sources while others only get cited from their own website",
+    sql: `SELECT c.brand, COUNT(*) AS total,
+  SUM(CASE WHEN ${CLASSIFY} = 'Own Brand' THEN 1 ELSE 0 END) AS own_brand,
+  SUM(CASE WHEN ${CLASSIFY} = 'Social Media' THEN 1 ELSE 0 END) AS social,
+  SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END) AS authority,
+  ROUND(100.0 * SUM(CASE WHEN ${CLASSIFY} = 'Third Party Authority' THEN 1 ELSE 0 END) / COUNT(*), 1) AS authority_pct
+FROM citations c WHERE c.brand IS NOT NULL AND c.url IS NOT NULL
+GROUP BY c.brand HAVING COUNT(*) >= 2 ORDER BY authority_pct DESC;`,
+  },
+  // ── LANDSCAPE / OVERVIEW ───────────────────────────────────────────────────
+  {
+    id: "by_platform", icon: "⊞",
+    title: "Source Mix by LLM Platform",
+    desc: "How ChatGPT, Claude & Gemini differ in what they cite",
+    reddit_angle: "Comparing citation behaviour across ChatGPT, Claude and Gemini — do they trust different source types?",
+    sql: `SELECT r.platform, ${CLASSIFY} AS citation_type,
+  COUNT(*) AS count,
+  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY r.platform), 1) AS pct_within_platform
+FROM citations c
+JOIN parsed_responses pr ON c.parsed_id = pr.parsed_id
+JOIN responses r ON pr.response_id = r.response_id
+WHERE c.url IS NOT NULL AND r.platform IS NOT NULL
+GROUP BY r.platform, citation_type ORDER BY r.platform, count DESC;`,
+  },
+  {
+    id: "source_mix", icon: "◉",
+    title: "Overall Source Mix",
+    desc: "% Own Brand vs Social Media vs Third Party",
+    reddit_angle: "How often do AI assistants cite brand pages vs social media vs independent sources?",
+    sql: `SELECT ${CLASSIFY} AS citation_type, COUNT(*) AS count,
+  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 1) AS pct
+FROM citations c WHERE c.url IS NOT NULL
+GROUP BY citation_type ORDER BY count DESC;`,
   },
 ];
 
