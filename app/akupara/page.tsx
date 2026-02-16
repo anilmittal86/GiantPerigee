@@ -159,7 +159,7 @@ JOIN brand_ranks br ON br.parsed_id = ba.parsed_id AND LOWER(br.brand) = LOWER(b
 GROUP BY ba.attribute
 HAVING SUM(CASE WHEN br.best_rank = 1 THEN 1 ELSE 0 END)
      + SUM(CASE WHEN br.best_rank >= 3 THEN 1 ELSE 0 END) >= 3
-ORDER BY win_ratio DESC NULLS LAST
+ORDER BY win_ratio_x DESC NULLS LAST
 LIMIT 20`,
   },
   // ── Q2: WHERE TO PUBLISH ───────────────────────────────────────────────────
