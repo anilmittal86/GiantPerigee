@@ -103,7 +103,7 @@ export default function Guide() {
                 </section>
 
                 <div style={{ marginTop: "4rem", textAlign: "center", color: "var(--text-dim)" }}>
-                    <p>Built with Next.js & Gemini 2.0</p>
+                    <p>Built with Next.js & Gemini</p>
                 </div>
             </main>
         </div>

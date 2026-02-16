@@ -2,8 +2,9 @@
 // Uses the same GEMINI_API_KEY already in your .env
 
 import { NextRequest, NextResponse } from "next/server";
+import { MODELS } from "../../config/models";
 
-const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_MODEL = MODELS.akupara;
 
 export async function POST(req: NextRequest) {
   try {
