@@ -150,10 +150,10 @@ brand_attrs AS (
     AND pr.attributes IS NOT NULL
 )
 SELECT ba.attribute,
-  SUM(CASE WHEN br.best_rank = 1 THEN 1 ELSE 0 END) AS rank_1,
-  SUM(CASE WHEN br.best_rank >= 3 THEN 1 ELSE 0 END) AS rank_3_plus,
+  SUM(CASE WHEN br.best_rank = 1 THEN 1 ELSE 0 END) AS times_on_rank1_brand,
+  SUM(CASE WHEN br.best_rank >= 3 THEN 1 ELSE 0 END) AS times_on_rank3_plus_brand,
   ROUND(SUM(CASE WHEN br.best_rank = 1 THEN 1 ELSE 0 END)::numeric
-    / NULLIF(SUM(CASE WHEN br.best_rank >= 3 THEN 1 ELSE 0 END), 0), 1) AS win_ratio
+    / NULLIF(SUM(CASE WHEN br.best_rank >= 3 THEN 1 ELSE 0 END), 0), 1) AS win_ratio_x
 FROM brand_attrs ba
 JOIN brand_ranks br ON br.parsed_id = ba.parsed_id AND LOWER(br.brand) = LOWER(ba.brand)
 GROUP BY ba.attribute
