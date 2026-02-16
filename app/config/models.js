@@ -11,5 +11,10 @@ export const MODELS = {
   ],
 
   // Used for SQL generation and Reddit post analysis (akupara route)
-  akupara: "gemini-2.0-flash",
+  // Fallback chain: tries each model in order on rate-limit errors
+  akupara: [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+  ],
 };
