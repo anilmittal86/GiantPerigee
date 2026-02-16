@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
+import { MODELS } from "../../config/models";
 
 // Curated Pexels search queries that are VERIFIED to return relevant,
 // professional images for AI/marketing/analytics/tech content.
@@ -102,11 +103,7 @@ export async function POST(req) {
         const genAI = new GoogleGenerativeAI(gemini_api_key);
 
         // Model fallback chain: try best model first, fall back on rate limit errors
-        const MODEL_CHAIN = [
-            "gemini-3-flash-preview",
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-        ];
+        const MODEL_CHAIN = MODELS.generate;
 
         async function tryGenerateWithFallback(prompt) {
             for (let i = 0; i < MODEL_CHAIN.length; i++) {
