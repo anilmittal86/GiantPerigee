@@ -150,10 +150,10 @@ brand_attrs AS (
     AND pr.attributes IS NOT NULL
 )
 SELECT ba.attribute,
-  SUM(CASE WHEN br.best_rank = 1 THEN 1 ELSE 0 END) AS rank_1,
-  SUM(CASE WHEN br.best_rank >= 3 THEN 1 ELSE 0 END) AS rank_3_plus,
+  SUM(CASE WHEN br.best_rank = 1 THEN 1 ELSE 0 END) AS times_on_rank1_brand,
+  SUM(CASE WHEN br.best_rank >= 3 THEN 1 ELSE 0 END) AS times_on_rank3_plus_brand,
   ROUND(SUM(CASE WHEN br.best_rank = 1 THEN 1 ELSE 0 END)::numeric
-    / NULLIF(SUM(CASE WHEN br.best_rank >= 3 THEN 1 ELSE 0 END), 0), 1) AS win_ratio
+    / NULLIF(SUM(CASE WHEN br.best_rank >= 3 THEN 1 ELSE 0 END), 0), 1) AS win_ratio_x
 FROM brand_attrs ba
 JOIN brand_ranks br ON br.parsed_id = ba.parsed_id AND LOWER(br.brand) = LOWER(ba.brand)
 GROUP BY ba.attribute
@@ -259,9 +259,10 @@ const TONES = [
 ];
 
 const STEPS = [
-  { id: "sql",   label: "Generating SQL..." },
-  { id: "query", label: "Querying Supabase..." },
-  { id: "post",  label: "Crafting Reddit post..." },
+  { id: "sql",      label: "Generating SQL..." },
+  { id: "query",    label: "Querying Supabase..." },
+  { id: "insights", label: "Extracting insights..." },
+  { id: "post",     label: "Crafting Reddit post..." },
 ];
 
 // ─── Setup SQL for the RPC function ──────────────────────────────────────────
@@ -341,11 +342,12 @@ export default function AkuparaPage() {
   const [catLoading, setCatLoading]   = useState(false);
   const [dataBanner, setDataBanner]   = useState<any>(null);
   const [bannerLoading, setBannerLoading] = useState(false);
-  const [activeRpt, setActiveRpt]   = useState<string | null>(null);
-  const [citStep, setCitStep]       = useState<string | null>(null);
-  const [citResults, setCitResults] = useState<any[] | null>(null);
-  const [citPost, setCitPost]       = useState("");
-  const [citErr, setCitErr]         = useState("");
+  const [activeRpt, setActiveRpt]     = useState<string | null>(null);
+  const [citStep, setCitStep]         = useState<string | null>(null);
+  const [citResults, setCitResults]   = useState<any[] | null>(null);
+  const [citInsights, setCitInsights] = useState("");
+  const [citPost, setCitPost]         = useState("");
+  const [citErr, setCitErr]           = useState("");
   const [citSqlOpen, setCitSqlOpen] = useState(false);
   const [citCopied, setCitCopied]   = useState(false);
   const [citSub, setCitSub]         = useState("");
@@ -532,17 +534,24 @@ Rules: Never mention AkuparaAI by name. Write as genuine research findings. Unde
   const runCitReport = async (rpt: CitReport) => {
     if (!citCategory) return;
     setActiveRpt(rpt.id);
-    setCitErr(""); setCitResults(null); setCitPost(""); setCitSqlOpen(false); setCitCopied(false);
+    setCitErr(""); setCitResults(null); setCitInsights(""); setCitPost(""); setCitSqlOpen(false); setCitCopied(false);
     try {
       setCitStep("query");
       const sql = rpt.sql(citCategory);
       const results = await runQuery(sql);
       setCitResults(results);
 
+      setCitStep("insights");
+      const insights = await callLLM(
+        `You are a citation intelligence analyst. Given query results for the category "${citCategory}", extract 3-5 key insights. Each insight should be one sentence, actionable, and data-backed. Use bullet points (• ). No fluff, no hedging. State what the data shows and what to do about it.`,
+        `Report: ${rpt.title}\nQuestion: ${rpt.question}\nData:\n${JSON.stringify(results, null, 2)}`
+      );
+      setCitInsights(insights);
+
       setCitStep("post");
       const post = await callLLM(
         buildPostSystem(citTone),
-        buildPostPrompt(`Category: ${citCategory}. ${rpt.reddit_angle}`, results, citSub, citTone)
+        buildPostPrompt(`Category: ${citCategory}. ${rpt.reddit_angle}\n\nKey insights:\n${insights}`, results, citSub, citTone)
       );
       setCitPost(post);
       setCitStep("done");
@@ -619,6 +628,26 @@ Rules: Never mention AkuparaAI by name. Write as genuine research findings. Unde
     if (!data || data.length === 0)
       return <p style={{ fontSize: 12, color: S.textSub, margin: 0 }}>No results returned.</p>;
     const keys = Object.keys(data[0]);
+    // Detect numeric columns and find max values for spotlighting
+    const numericCols = new Set<string>();
+    const maxVals: Record<string, number> = {};
+    keys.forEach(k => {
+      const vals = data.map(r => r[k]).filter(v => v !== null && v !== undefined);
+      if (vals.length > 0 && vals.every(v => typeof v === "number" || (typeof v === "string" && !isNaN(Number(v)) && v.trim() !== ""))) {
+        numericCols.add(k);
+        maxVals[k] = Math.max(...vals.map(Number));
+      }
+    });
+    // Don't spotlight columns that are just counts of 1 value or all same
+    const spotlightCols = new Set(
+      [...numericCols].filter(k => {
+        const vals = data.map(r => Number(r[k]));
+        return new Set(vals).size > 1;
+      })
+    );
+    const isMax = (k: string, v: any) =>
+      spotlightCols.has(k) && v !== null && v !== undefined && Number(v) === maxVals[k];
+
     return (
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
@@ -631,7 +660,12 @@ Rules: Never mention AkuparaAI by name. Write as genuine research findings. Unde
             {data.map((row, i) => (
               <tr key={i} style={{ background: i % 2 === 0 ? S.card : S.input }}>
                 {keys.map(k => (
-                  <td key={k} style={{ padding: "6px 10px", color: S.text, borderBottom: `1px solid ${S.borderLight}`, whiteSpace: "nowrap" }}>
+                  <td key={k} style={{
+                    padding: "6px 10px", color: isMax(k, row[k]) ? "#15803d" : S.text,
+                    borderBottom: `1px solid ${S.borderLight}`, whiteSpace: "nowrap",
+                    background: isMax(k, row[k]) ? "#f0fdf4" : undefined,
+                    fontWeight: isMax(k, row[k]) ? "700" : undefined,
+                  }}>
                     {row[k] === null ? <span style={{ color: "#bbb" }}>—</span> : String(row[k])}
                   </td>
                 ))}
@@ -928,6 +962,12 @@ Rules: Never mention AkuparaAI by name. Write as genuine research findings. Unde
                       </div>
                       <ResultsTable data={citResults} />
                     </div>
+                    {citInsights && (
+                      <div style={{ ...card, borderLeft: `4px solid ${S.amber}`, background: S.amberLight }}>
+                        <div style={{ fontSize: 11, letterSpacing: "0.1em", color: S.amber, fontWeight: "700", marginBottom: 10 }}>KEY INSIGHTS</div>
+                        <pre style={{ margin: 0, fontSize: 12, color: S.text, lineHeight: 1.8, whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{citInsights}</pre>
+                      </div>
+                    )}
                     {citPost && <PostOutput post={citPost} sub={citSub} copied={citCopied} setCopied={setCitCopied} />}
                   </>
                 )}
