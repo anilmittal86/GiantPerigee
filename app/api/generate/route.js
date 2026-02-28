@@ -2,8 +2,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { MODELS } from "../../config/models";
 
-// Common stop words to filter out when extracting search terms from post content
+// Common stop words to filter out when extracting search terms from post content.
+// Includes conversational filler words that are common in LinkedIn posts but
+// make terrible image search queries (they're ambiguous or too generic).
 const STOP_WORDS = new Set([
+    // Standard grammatical stop words
     'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
     'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
     'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall',
@@ -15,9 +18,21 @@ const STOP_WORDS = new Set([
     'under', 'again', 'then', 'here', 'there', 'up', 'out', 'if', 'because', 'as', 'while',
     'only', 'own', 'same', 'get', 'got', 'make', 'like', 'even', 'new', 'way', 'one', 'two',
     're', 'isn', 'aren', 'wasn', 'weren', 'don', 'doesn', 'didn', 'won', 'wouldn', 'couldn',
+    // Conversational filler — very common in LinkedIn posts, but ambiguous on photo sites.
+    // "right" on Pexels returns protest/rights imagery, "body" returns anatomy, etc.
+    'right', 'really', 'thing', 'things', 'going', 'know', 'need', 'want', 'work', 'working',
+    'look', 'looking', 'feel', 'feeling', 'think', 'thinking', 'well', 'good', 'great', 'best',
+    'better', 'much', 'many', 'still', 'already', 'always', 'never', 'ever', 'keep', 'start',
+    'stop', 'come', 'back', 'take', 'give', 'tell', 'said', 'say', 'says', 'goes', 'went',
+    'done', 'made', 'let', 'whole', 'full', 'long', 'hard', 'real', 'true', 'sure', 'actually',
+    'literally', 'basically', 'simply', 'truly', 'genuinely', 'completely', 'constantly',
+    'week', 'year', 'time', 'days', 'today', 'just', 'means', 'mean', 'enough',
+    'people', 'someone', 'everyone', 'nobody', 'something', 'nothing', 'everything',
 ]);
 
-// Map abstract/jargon terms to concrete visual concepts Pexels can understand
+// Map abstract/jargon terms to concrete visual concepts Pexels can understand.
+// When the fallback keyword extraction pulls a word like "portfolio" from a post,
+// it searches Pexels for "investment money" instead — which returns actual photos.
 const VISUAL_TRANSLATIONS = {
     // Finance & Investing
     portfolio: 'investment money', investing: 'stock market', stocks: 'stock exchange', alpha: 'trading screen',
@@ -26,9 +41,12 @@ const VISUAL_TRANSLATIONS = {
     // Business
     revenue: 'business profit chart', roi: 'business growth', strategy: 'business planning', enterprise: 'corporate office',
     startup: 'startup team working', leadership: 'business leader speaking', brand: 'marketing branding',
-    // Health & Wellness
-    wellness: 'healthy lifestyle', diagnosis: 'doctor medical', therapy: 'therapist patient', nutrition: 'healthy food plate',
-    mental: 'meditation mindfulness', fitness: 'exercise workout gym',
+    // Health, Fitness & Wellness
+    wellness: 'healthy lifestyle nature', diagnosis: 'doctor medical', therapy: 'therapist patient', nutrition: 'healthy food plate',
+    mental: 'meditation mindfulness', fitness: 'person jogging sunrise', diet: 'healthy food salad bowl',
+    workout: 'gym weights exercise', sleep: 'peaceful bedroom morning', stress: 'meditation calm nature',
+    eating: 'healthy meal preparation', exercise: 'outdoor running fitness', health: 'healthy lifestyle active',
+    burnout: 'person relaxing nature', selfcare: 'spa wellness relaxation', mindset: 'meditation peaceful',
     // Tech
     algorithm: 'computer code screen', blockchain: 'digital technology', software: 'programmer laptop code',
     // Insurance
@@ -36,9 +54,14 @@ const VISUAL_TRANSLATIONS = {
     // Real estate
     mortgage: 'house keys', property: 'real estate house', tenant: 'apartment building',
     // Fashion
-    couture: 'fashion runway', apparel: 'clothing store', textile: 'fabric texture',
-    // Sales
+    couture: 'fashion runway', apparel: 'clothing store', textile: 'fabric texture', fashion: 'fashion model stylish',
+    // Sales & Marketing
     pipeline: 'sales funnel', conversion: 'customer purchase', prospect: 'business meeting handshake',
+    marketing: 'digital marketing laptop', engagement: 'social media phone',
+    // Education
+    learning: 'student studying books', teaching: 'classroom education', skills: 'training workshop',
+    // News & Current events
+    breaking: 'newspaper headlines', economy: 'global economy map', inflation: 'rising prices chart',
 };
 
 // Extract the most meaningful search terms from post content, translating jargon to visual concepts
@@ -155,6 +178,11 @@ GOOD QUERIES describe what a CAMERA would see:
 - Real scenes: "trading floor", "doctor office", "fashion show", "kitchen"
 - People doing things: "chef cooking", "trader screen", "model walking"
 
+SAFETY: Never use words that could return protest, political, or controversial imagery.
+- "rights" → could return protest photos. Use the actual visual instead.
+- "body" → could return anatomy/NSFW. Use "fitness person" or "healthy lifestyle" instead.
+- Always describe POSITIVE, professional visuals suitable for LinkedIn.
+
 Return ONLY a JSON array of 5 strings, ordered from most specific to broadest:
 ["very_specific_photo", "specific_photo", "related_scene", "broader_visual", "safe_fallback"]
 
@@ -226,15 +254,33 @@ function scorePhotoRelevance(photo, query, topicKeywords = []) {
     return score;
 }
 
-// Check if a photo's alt text is clearly off-topic for the query
+// Words in photo alt text that indicate the photo is likely inappropriate
+// for a professional LinkedIn post (protests, political content, NSFW, etc.)
+const PHOTO_BLOCKLIST = [
+    'protest', 'protester', 'protesting', 'rally', 'activist', 'activism',
+    'abortion', 'political', 'politician', 'election', 'ballot', 'riot',
+    'violence', 'violent', 'weapon', 'gun', 'rifle', 'war', 'military',
+    'funeral', 'cemetery', 'death', 'dead', 'corpse', 'blood', 'gore',
+    'nude', 'naked', 'erotic', 'sexual', 'lingerie', 'bikini',
+    'arrest', 'handcuff', 'prison', 'jail', 'crime', 'criminal',
+    'drug', 'marijuana', 'cannabis', 'smoking', 'cigarette', 'alcohol', 'drunk',
+    'graffiti', 'vandal',
+];
+
+// Check if a photo's alt text indicates it's off-topic or inappropriate
 function isPhotoOffTopic(photo, query) {
     const alt = (photo.alt || '').toLowerCase();
     if (!alt || alt.length < 5) return false; // Can't tell, give benefit of doubt
 
+    // Hard block: reject photos with blocklisted content regardless of query match
+    for (const blocked of PHOTO_BLOCKLIST) {
+        if (alt.includes(blocked)) return true;
+    }
+
+    // Soft block: if alt text is substantial but has zero overlap with query
     const queryWords = query.toLowerCase().split(/\s+/);
-    // If none of the query words appear in the alt text, it's suspect
     const hasAnyMatch = queryWords.some(w => w.length > 3 && alt.includes(w));
-    return !hasAnyMatch && alt.length > 20; // Only flag if alt text is substantial but has zero overlap
+    return !hasAnyMatch && alt.length > 20;
 }
 
 // Get image from Pexels using custom LLM-generated queries with quality filtering
