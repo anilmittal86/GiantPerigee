@@ -3,8 +3,7 @@ import { NextResponse } from "next/server";
 import { MODELS } from "../../config/models";
 
 // Curated Pexels search queries that are VERIFIED to return relevant,
-// professional images for AI/marketing/analytics/tech content.
-// Grouped by theme so the AI can pick the best match for each post.
+// professional images. Grouped by theme so the AI can pick the best match.
 const CURATED_IMAGE_THEMES = {
     analytics: ["laptop analytics graph", "computer data charts", "screen dashboard metrics"],
     marketing: ["digital marketing laptop", "marketing team computer", "content strategy planning"],
@@ -14,6 +13,12 @@ const CURATED_IMAGE_THEMES = {
     data: ["data visualization screen", "big data technology", "database server room"],
     social: ["social media marketing", "social media phone", "online engagement mobile"],
     growth: ["business growth chart", "revenue graph computer", "performance metrics screen"],
+    finance: ["stock market trading screen", "investment portfolio chart", "financial planning documents"],
+    investing: ["wall street bull statue", "stock exchange trading floor", "investment growth coins"],
+    wealth: ["luxury office executive desk", "gold coins investment", "wealth management meeting"],
+    innovation: ["lightbulb creative idea", "startup innovation whiteboard", "futuristic technology concept"],
+    leadership: ["confident business leader", "executive keynote speech", "team leadership meeting"],
+    economy: ["global economy world map", "economic trends newspaper", "market analysis charts"],
 };
 
 // Get a themed image from Pexels using curated queries
@@ -53,29 +58,37 @@ async function getThemedPexelsImage(theme) {
 async function generateImageQueriesLLM(posts, genAI, modelName = "gemini-2.0-flash") {
     const postContents = posts.map((p, i) => `${i + 1}. "${p.content}"`).join("\n");
 
-    const prompt = `Given these LinkedIn posts, generate 2-3 specific Pexels search queries (1-4 words each) that would find the best matching professional/tech/business images.
+    const prompt = `You are an expert at finding the perfect stock photo for a LinkedIn post. Analyze the ACTUAL TOPIC of these posts and generate 4-5 specific Pexels search queries (2-4 words each) that would find visually compelling, on-topic images.
+
+CRITICAL RULES:
+- Match the SUBJECT MATTER of the post, not just generic "business" or "technology" images
+- If the post is about investing/finance, use finance-related queries (e.g. "stock market trading", "investment portfolio growth", "wall street finance")
+- If about startups, use startup imagery (e.g. "startup founders meeting", "venture capital pitch")
+- If about AI/tech, use specific tech imagery (e.g. "artificial intelligence neural network", "machine learning data")
+- If about marketing, use marketing imagery (e.g. "digital marketing campaign", "brand strategy whiteboard")
+- AVOID generic queries like "business meeting" or "laptop office" unless the post is truly about that
+- Generate queries from MOST SPECIFIC to LEAST SPECIFIC so we try the best match first
+- Think about what image would make someone STOP SCROLLING on LinkedIn when paired with this post
 
 Return ONLY valid JSON array of strings (no markdown):
-["query1", "query2", "query3"]
+["most_specific_query", "specific_query", "broader_query", "fallback_query"]
 
 Posts:
-${postContents}
-
-Examples of good queries: "modern office workspace", "AI technology abstract", "data analytics dashboard", "team meeting collaboration", "business growth chart"`;
+${postContents}`;
 
     try {
-        const model = genAI.getGenerativeModel({ 
+        const model = genAI.getGenerativeModel({
             model: modelName,
             tools: [{ googleSearch: {} }]  // grounding enabled
         });
         const result = await model.generateContent(prompt);
         const text = result.response.text().trim();
-        
+
         // Extract JSON array
         const match = text.match(/\[[\s\S]*\]/);
         if (match) {
             const queries = JSON.parse(match[0]);
-            return queries.slice(0, 3); // Return max 3 queries
+            return queries.slice(0, 5); // Return max 5 queries
         }
     } catch (error) {
         console.error("LLM image query generation error:", error);
@@ -83,14 +96,31 @@ Examples of good queries: "modern office workspace", "AI technology abstract", "
     return null;
 }
 
+// Score a Pexels photo's relevance to the search query using alt text
+function scorePhotoRelevance(photo, query) {
+    const queryWords = query.toLowerCase().split(/\s+/);
+    const alt = (photo.alt || '').toLowerCase();
+    const url = (photo.url || '').toLowerCase();
+
+    let score = 0;
+    for (const word of queryWords) {
+        if (alt.includes(word)) score += 2;
+        if (url.includes(word)) score += 1;
+    }
+    // Prefer landscape photos with good dimensions for LinkedIn
+    const ratio = photo.width / photo.height;
+    if (ratio >= 1.2 && ratio <= 2.0) score += 1; // Good LinkedIn aspect ratio
+    return score;
+}
+
 // Get image from Pexels using custom LLM-generated queries
-async function getImageFromLLMQueries(queries) {
+async function getImageFromLLMQueries(queries, usedUrls = new Set()) {
     const PEXELS_API_KEY = process.env.PEXELS_API_KEY || 'YOUR_PEXELS_API_KEY';
 
     for (const query of queries) {
         try {
             const response = await fetch(
-                `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=15&orientation=landscape&size=large`,
+                `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=30&orientation=landscape&size=large`,
                 {
                     headers: { 'Authorization': PEXELS_API_KEY }
                 }
@@ -99,13 +129,24 @@ async function getImageFromLLMQueries(queries) {
             if (response.ok) {
                 const data = await response.json();
                 if (data.photos && data.photos.length > 0) {
-                    const photo = data.photos[Math.floor(Math.random() * Math.min(data.photos.length, 8))];
-                    return {
-                        url: photo.src.large,
-                        photographer: photo.photographer,
-                        photographer_url: photo.photographer_url,
-                        query_used: query
-                    };
+                    // Score and rank photos by relevance, filter out already-used URLs
+                    const candidates = data.photos
+                        .filter(p => !usedUrls.has(p.src.large))
+                        .map(p => ({ photo: p, score: scorePhotoRelevance(p, query) }))
+                        .sort((a, b) => b.score - a.score);
+
+                    if (candidates.length > 0) {
+                        // Pick from top 3 scored results with slight randomness for variety
+                        const topN = Math.min(3, candidates.length);
+                        const pick = candidates[Math.floor(Math.random() * topN)].photo;
+                        return {
+                            url: pick.src.large,
+                            photographer: pick.photographer,
+                            photographer_url: pick.photographer_url,
+                            query_used: query,
+                            alt: pick.alt || ''
+                        };
+                    }
                 }
             }
         } catch (error) {
@@ -128,6 +169,12 @@ function pickImageTheme(postContent, usedThemes) {
         data: ['data', 'insight', 'analysis', 'intelligence', 'information', 'research'].filter(k => content.includes(k)).length,
         social: ['social media', 'linkedin', 'twitter', 'post', 'share', 'community', 'network'].filter(k => content.includes(k)).length,
         growth: ['growth', 'scale', 'increase', 'improve', 'boost', 'accelerate', 'opportunity'].filter(k => content.includes(k)).length,
+        finance: ['stock', 'trading', 'market', 'portfolio', 'returns', 'financial', 'fund', 'asset', 'equity', 'capital', 'dividend'].filter(k => content.includes(k)).length,
+        investing: ['invest', 'allocation', 'compounding', 'alpha', 'microcap', 'small cap', 'hedge', 'wealth creation', 'long-term'].filter(k => content.includes(k)).length,
+        wealth: ['wealth', 'prosperity', 'affluent', 'high-net-worth', 'retirement', 'financial freedom', 'millionaire'].filter(k => content.includes(k)).length,
+        innovation: ['innovation', 'disrupt', 'exponential', 'emerging', 'paradigm', 'frontier', 'breakthrough', 'transform'].filter(k => content.includes(k)).length,
+        leadership: ['leader', 'ceo', 'founder', 'visionary', 'mentor', 'executive', 'decision'].filter(k => content.includes(k)).length,
+        economy: ['economy', 'macro', 'global', 'gdp', 'inflation', 'recession', 'demographic', 'fiscal'].filter(k => content.includes(k)).length,
     };
 
     const sorted = Object.entries(themeScores).sort((a, b) => b[1] - a[1]);
@@ -456,10 +503,10 @@ export async function POST(req) {
                     const llmQueries = await generateImageQueriesLLM([post], genAI);
                     
                     let image = null;
-                    
+
                     if (llmQueries && llmQueries.length > 0) {
                         console.log(`Post ${i + 1} LLM queries:`, llmQueries);
-                        image = await getImageFromLLMQueries(llmQueries);
+                        image = await getImageFromLLMQueries(llmQueries, usedUrls);
                     }
                     // Fallback to theme-based if LLM failed
                     if (!image) {
