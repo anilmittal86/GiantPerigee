@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Configuration from "./components/Configuration";
 import PostGenerator from "./components/PostGenerator";
 import axios from "axios";
@@ -11,6 +11,22 @@ export default function Home() {
     const [generatedPosts, setGeneratedPosts] = useState([]);
     const [loading, setLoading] = useState(false);
     const [configData, setConfigData] = useState({});
+    const [theme, setTheme] = useState("dark");
+
+    useEffect(() => {
+        const saved = localStorage.getItem("perigee-theme");
+        if (saved) {
+            setTheme(saved);
+            document.documentElement.setAttribute("data-theme", saved);
+        }
+    }, []);
+
+    const toggleTheme = () => {
+        const next = theme === "dark" ? "light" : "dark";
+        setTheme(next);
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("perigee-theme", next);
+    };
 
     const handleGenerate = async (config) => {
         setConfigData(config); // Save for posting later
@@ -52,18 +68,35 @@ export default function Home() {
                                 priority
                             />
                         </Link>
-                        <div style={{ fontSize: "0.8rem", color: "var(--text-dim)", fontWeight: 500, marginTop: "4px" }}>
+                        <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", fontWeight: 500, marginTop: "4px", letterSpacing: "0.1em", textTransform: "uppercase" }}>
                             Social Media Manager
                         </div>
                     </div>
 
-                    <Link href="/guide" className="btn-secondary" style={{ marginTop: "0.5rem" }}>
-                        📚 User Guide
-                    </Link>
+                    <div className="navbar-right">
+                        <button
+                            className="theme-toggle"
+                            onClick={toggleTheme}
+                            aria-label="Toggle theme"
+                            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                        >
+                            {theme === "dark" ? "☀️" : "🌙"}
+                        </button>
+                        <Link href="/guide" className="btn-secondary">
+                            📚 User Guide
+                        </Link>
+                    </div>
                 </div>
             </nav>
 
             <main className="main-content">
+                <div className="hero-section">
+                    <h1 className="hero-title">AI-Powered Content Studio</h1>
+                    <p className="hero-subtitle">
+                        Generate professional social media content for LinkedIn, Reddit, and Twitter in seconds
+                    </p>
+                </div>
+
                 <Configuration onGenerate={handleGenerate} />
 
                 <PostGenerator

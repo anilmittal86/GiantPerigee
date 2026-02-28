@@ -7,12 +7,6 @@ export default function Configuration({ onGenerate }) {
         geminiKey: "",
         linkedinToken: "",
         linkedinUrn: "",
-        // Twitter API credentials (only needed for paid Twitter API tier - $100/month)
-        // For now, Twitter sharing is manual (similar to Reddit)
-        // twitterApiKey: "",
-        // twitterApiSecret: "",
-        // twitterAccessToken: "",
-        // twitterAccessSecret: "",
         subreddit: "AEO_AkuparaAI",
         postType: "mixed",
         productInfo: "",
@@ -25,7 +19,6 @@ export default function Configuration({ onGenerate }) {
         const saved = localStorage.getItem("linkedin-agent-config");
         if (saved) {
             const parsed = JSON.parse(saved);
-            // Merge with default/current state to ensure new keys (like subreddit) exist
             setConfig(prev => ({ ...prev, ...parsed }));
         }
     }, []);
@@ -38,7 +31,6 @@ export default function Configuration({ onGenerate }) {
     };
 
     const handleGenerateClick = () => {
-        // if (!config.geminiKey) return alert("Gemini API Key is required"); // Optional now
         if (!config.productInfo) return alert("Please provide product info");
 
         const wordCount = config.productInfo.trim().split(/\s+/).length;
@@ -46,31 +38,47 @@ export default function Configuration({ onGenerate }) {
             return alert(`Please provide more context (at least 10 words). Current: ${wordCount} words.\n\nBetter context = Better posts!`);
         }
 
-        // Pass relevant data up
         onGenerate({
             geminiKey: config.geminiKey,
             postType: config.postType,
             productInfo: config.productInfo,
             linkedinToken: config.linkedinToken,
             linkedinUrn: config.linkedinUrn,
-            // Twitter credentials not needed for manual sharing
             subreddit: config.subreddit
         });
-        setIsOpen(false); // Collapse after generating
+        setIsOpen(false);
     };
 
     return (
-        <div className="card" style={{ marginBottom: "1.5rem" }}>
+        <div className="card fade-in" style={{ marginBottom: "1.5rem" }}>
             <div
                 style={{ display: "flex", justifyContent: "space-between", cursor: "pointer", alignItems: "center" }}
                 onClick={() => setIsOpen(!isOpen)}
             >
-                <h3 style={{ fontSize: "1.1rem" }}>Configuration & Context</h3>
-                <span style={{ color: "var(--text-dim)", fontSize: "0.8rem" }}>{isOpen ? "▲" : "▼"}</span>
+                <div className="section-header" style={{ marginBottom: 0 }}>
+                    <div className="section-icon">⚙️</div>
+                    <div>
+                        <div className="section-title">Configuration & Context</div>
+                        <div className="section-description">Set up your content parameters</div>
+                    </div>
+                </div>
+                <span style={{
+                    color: "var(--text-dim)",
+                    fontSize: "0.75rem",
+                    width: "28px",
+                    height: "28px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: "var(--radius-sm)",
+                    background: "var(--surface-elevated)",
+                    border: "1px solid var(--border)",
+                    transition: "all 0.2s ease"
+                }}>{isOpen ? "▲" : "▼"}</span>
             </div>
 
             {isOpen && (
-                <div style={{ marginTop: "1rem" }}>
+                <div style={{ marginTop: "1.5rem" }}>
                     <div className="grid" style={{ gap: "1.5rem" }}>
                         <div style={{ marginBottom: "0.5rem" }}>
                             <div
@@ -81,20 +89,25 @@ export default function Configuration({ onGenerate }) {
                                     color: "var(--text-dim)",
                                     fontSize: "0.85rem",
                                     fontWeight: 500,
-                                    userSelect: "none"
+                                    userSelect: "none",
+                                    padding: "0.5rem 0.75rem",
+                                    borderRadius: "var(--radius-sm)",
+                                    transition: "all 0.2s ease"
                                 }}
                                 onClick={() => setShowAdvanced(!showAdvanced)}
+                                onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface-elevated)"}
+                                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
                             >
-                                <span style={{ marginRight: "0.4rem", fontSize: "0.7rem" }}>{showAdvanced ? "▼" : "▶"}</span>
+                                <span style={{ marginRight: "0.5rem", fontSize: "0.65rem", transition: "transform 0.2s ease", transform: showAdvanced ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
                                 <span>Advanced Settings (API Keys)</span>
                             </div>
 
                             {showAdvanced && (
-                                <div style={{
+                                <div className="fade-in" style={{
                                     marginTop: "0.75rem",
-                                    padding: "1rem",
-                                    background: "var(--surface-highlight)",
-                                    borderRadius: "8px",
+                                    padding: "1.25rem",
+                                    background: "var(--background-secondary)",
+                                    borderRadius: "var(--radius-md)",
                                     border: "1px solid var(--border)"
                                 }}>
                                     <div className="form-group" style={{ marginBottom: "1rem" }}>
@@ -175,20 +188,19 @@ export default function Configuration({ onGenerate }) {
                                     value={config.productInfo}
                                     placeholder="Today we are launching Feature X..."
                                     onChange={handleChange}
-                                    style={{ minHeight: "100px" }}
+                                    style={{ minHeight: "120px" }}
                                 />
                             </div>
                         </div>
                     </div>
 
-                    <div style={{ marginTop: "1rem", textAlign: "right" }}>
-                        <button className="btn" onClick={handleGenerateClick}>
-                            Generate Posts
+                    <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "flex-end" }}>
+                        <button className="btn" onClick={handleGenerateClick} style={{ padding: "0.875rem 2.5rem", fontSize: "1rem" }}>
+                            ✨ Generate Posts
                         </button>
                     </div>
                 </div>
-            )
-            }
-        </div >
+            )}
+        </div>
     );
 }
