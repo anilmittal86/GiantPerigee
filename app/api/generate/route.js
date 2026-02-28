@@ -2,34 +2,61 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { MODELS } from "../../config/models";
 
-// Curated Pexels search queries that are VERIFIED to return relevant,
-// professional images. Grouped by theme so the AI can pick the best match.
-const CURATED_IMAGE_THEMES = {
-    analytics: ["laptop analytics graph", "computer data charts", "screen dashboard metrics"],
-    marketing: ["digital marketing laptop", "marketing team computer", "content strategy planning"],
-    ai_tech: ["artificial intelligence technology", "robot technology modern", "circuit board technology"],
-    search: ["search engine laptop", "google search computer", "SEO optimization screen"],
-    business: ["business presentation meeting", "startup team office", "professional workspace laptop"],
-    data: ["data visualization screen", "big data technology", "database server room"],
-    social: ["social media marketing", "social media phone", "online engagement mobile"],
-    growth: ["business growth chart", "revenue graph computer", "performance metrics screen"],
-    finance: ["stock market trading screen", "investment portfolio chart", "financial planning documents"],
-    investing: ["wall street bull statue", "stock exchange trading floor", "investment growth coins"],
-    wealth: ["luxury office executive desk", "gold coins investment", "wealth management meeting"],
-    innovation: ["lightbulb creative idea", "startup innovation whiteboard", "futuristic technology concept"],
-    leadership: ["confident business leader", "executive keynote speech", "team leadership meeting"],
-    economy: ["global economy world map", "economic trends newspaper", "market analysis charts"],
-};
+// Common stop words to filter out when extracting search terms from post content
+const STOP_WORDS = new Set([
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+    'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
+    'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall',
+    'not', 'no', 'nor', 'so', 'yet', 'both', 'each', 'few', 'more', 'most', 'other', 'some',
+    'such', 'than', 'too', 'very', 'can', 'just', 'don', 'now', 'also', 'how', 'what', 'when',
+    'where', 'who', 'which', 'why', 'all', 'any', 'every', 'this', 'that', 'these', 'those',
+    'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my',
+    'your', 'his', 'its', 'our', 'their', 'about', 'into', 'over', 'after', 'before', 'between',
+    'under', 'again', 'then', 'here', 'there', 'up', 'out', 'if', 'because', 'as', 'while',
+    'only', 'own', 'same', 'get', 'got', 'make', 'like', 'even', 'new', 'way', 'one', 'two',
+    're', 'isn', 'aren', 'wasn', 'weren', 'don', 'doesn', 'didn', 'won', 'wouldn', 'couldn',
+]);
 
-// Get a themed image from Pexels using curated queries
-async function getThemedPexelsImage(theme) {
+// Extract the most meaningful search terms from post content (works for ANY topic)
+function extractSearchTerms(postContent) {
+    const words = postContent
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 3 && !STOP_WORDS.has(w));
+
+    // Count word frequency to find the most prominent terms
+    const freq = {};
+    for (const word of words) {
+        freq[word] = (freq[word] || 0) + 1;
+    }
+
+    // Sort by frequency, take the top distinctive terms
+    const topWords = Object.entries(freq)
+        .sort((a, b) => b[1] - a[1])
+        .map(([word]) => word)
+        .slice(0, 8);
+
+    // Build 2-3 search queries by combining top terms
+    const queries = [];
+    if (topWords.length >= 2) queries.push(`${topWords[0]} ${topWords[1]}`);
+    if (topWords.length >= 4) queries.push(`${topWords[2]} ${topWords[3]}`);
+    if (topWords.length >= 3) queries.push(`${topWords[0]} ${topWords[2]}`);
+    // Single strongest term as last resort
+    if (topWords.length >= 1) queries.push(topWords[0]);
+
+    return queries;
+}
+
+// Search Pexels with dynamic queries extracted from content (works for any topic)
+async function searchPexelsDynamic(postContent, usedUrls = new Set()) {
     const PEXELS_API_KEY = process.env.PEXELS_API_KEY || 'YOUR_PEXELS_API_KEY';
-    const queries = CURATED_IMAGE_THEMES[theme] || CURATED_IMAGE_THEMES.analytics;
+    const queries = extractSearchTerms(postContent);
 
     for (const query of queries) {
         try {
             const response = await fetch(
-                `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=15&orientation=landscape&size=large`,
+                `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=20&orientation=landscape&size=large`,
                 {
                     headers: { 'Authorization': PEXELS_API_KEY }
                 }
@@ -38,17 +65,26 @@ async function getThemedPexelsImage(theme) {
             if (response.ok) {
                 const data = await response.json();
                 if (data.photos && data.photos.length > 0) {
-                    // Pick a random photo from results for variety
-                    const photo = data.photos[Math.floor(Math.random() * Math.min(data.photos.length, 8))];
-                    return {
-                        url: photo.src.large,
-                        photographer: photo.photographer,
-                        photographer_url: photo.photographer_url
-                    };
+                    const candidates = data.photos
+                        .filter(p => !usedUrls.has(p.src.large))
+                        .map(p => ({ photo: p, score: scorePhotoRelevance(p, query) }))
+                        .sort((a, b) => b.score - a.score);
+
+                    if (candidates.length > 0) {
+                        const topN = Math.min(3, candidates.length);
+                        const pick = candidates[Math.floor(Math.random() * topN)].photo;
+                        return {
+                            url: pick.src.large,
+                            photographer: pick.photographer,
+                            photographer_url: pick.photographer_url,
+                            query_used: `fallback: ${query}`,
+                            alt: pick.alt || ''
+                        };
+                    }
                 }
             }
         } catch (error) {
-            console.error(`Pexels search error for query "${query}":`, error);
+            console.error(`Pexels dynamic search error for "${query}":`, error);
         }
     }
     return null;
@@ -58,20 +94,18 @@ async function getThemedPexelsImage(theme) {
 async function generateImageQueriesLLM(posts, genAI, modelName = "gemini-2.0-flash") {
     const postContents = posts.map((p, i) => `${i + 1}. "${p.content}"`).join("\n");
 
-    const prompt = `You are an expert at finding the perfect stock photo for a LinkedIn post. Analyze the ACTUAL TOPIC of these posts and generate 4-5 specific Pexels search queries (2-4 words each) that would find visually compelling, on-topic images.
+    const prompt = `You are an expert at finding the perfect stock photo for a LinkedIn post. Analyze the ACTUAL TOPIC and CORE SUBJECT of these posts, then generate 4-5 specific Pexels search queries (2-4 words each) that would find visually compelling, on-topic images.
 
 CRITICAL RULES:
-- Match the SUBJECT MATTER of the post, not just generic "business" or "technology" images
-- If the post is about investing/finance, use finance-related queries (e.g. "stock market trading", "investment portfolio growth", "wall street finance")
-- If about startups, use startup imagery (e.g. "startup founders meeting", "venture capital pitch")
-- If about AI/tech, use specific tech imagery (e.g. "artificial intelligence neural network", "machine learning data")
-- If about marketing, use marketing imagery (e.g. "digital marketing campaign", "brand strategy whiteboard")
-- AVOID generic queries like "business meeting" or "laptop office" unless the post is truly about that
+- Identify the PRIMARY SUBJECT of the post (e.g. healthcare, fashion, investing, real estate, cooking, fitness, etc.) and use domain-specific imagery
+- NEVER default to generic "business meeting" or "laptop office" queries. Match the actual subject matter
 - Generate queries from MOST SPECIFIC to LEAST SPECIFIC so we try the best match first
-- Think about what image would make someone STOP SCROLLING on LinkedIn when paired with this post
+- Think: "If I were a graphic designer choosing a hero image for this post, what would I search for?"
+- The image should make someone STOP SCROLLING when paired with this post on LinkedIn
+- Consider both literal imagery (e.g. "stock market graph" for finance) and metaphorical imagery (e.g. "mountain summit sunrise" for achievement) — include both types
 
 Return ONLY valid JSON array of strings (no markdown):
-["most_specific_query", "specific_query", "broader_query", "fallback_query"]
+["most_specific_query", "specific_query", "metaphorical_query", "broader_query", "fallback_query"]
 
 Posts:
 ${postContents}`;
@@ -156,35 +190,9 @@ async function getImageFromLLMQueries(queries, usedUrls = new Set()) {
     return null;
 }
 
-// Fallback: Map post content to best image theme (keyword-based)
-function pickImageTheme(postContent, usedThemes) {
-    const content = postContent.toLowerCase();
-
-    const themeScores = {
-        analytics: ['analytics', 'dashboard', 'metrics', 'measure', 'track', 'monitor', 'kpi', 'performance', 'report'].filter(k => content.includes(k)).length,
-        marketing: ['marketing', 'content', 'campaign', 'brand awareness', 'audience', 'engagement', 'strategy'].filter(k => content.includes(k)).length,
-        ai_tech: ['ai', 'artificial intelligence', 'chatgpt', 'llm', 'machine learning', 'algorithm', 'automation'].filter(k => content.includes(k)).length,
-        search: ['search', 'seo', 'google', 'visibility', 'ranking', 'optimization', 'discover'].filter(k => content.includes(k)).length,
-        business: ['business', 'revenue', 'roi', 'enterprise', 'company', 'leadership', 'executive'].filter(k => content.includes(k)).length,
-        data: ['data', 'insight', 'analysis', 'intelligence', 'information', 'research'].filter(k => content.includes(k)).length,
-        social: ['social media', 'linkedin', 'twitter', 'post', 'share', 'community', 'network'].filter(k => content.includes(k)).length,
-        growth: ['growth', 'scale', 'increase', 'improve', 'boost', 'accelerate', 'opportunity'].filter(k => content.includes(k)).length,
-        finance: ['stock', 'trading', 'market', 'portfolio', 'returns', 'financial', 'fund', 'asset', 'equity', 'capital', 'dividend'].filter(k => content.includes(k)).length,
-        investing: ['invest', 'allocation', 'compounding', 'alpha', 'microcap', 'small cap', 'hedge', 'wealth creation', 'long-term'].filter(k => content.includes(k)).length,
-        wealth: ['wealth', 'prosperity', 'affluent', 'high-net-worth', 'retirement', 'financial freedom', 'millionaire'].filter(k => content.includes(k)).length,
-        innovation: ['innovation', 'disrupt', 'exponential', 'emerging', 'paradigm', 'frontier', 'breakthrough', 'transform'].filter(k => content.includes(k)).length,
-        leadership: ['leader', 'ceo', 'founder', 'visionary', 'mentor', 'executive', 'decision'].filter(k => content.includes(k)).length,
-        economy: ['economy', 'macro', 'global', 'gdp', 'inflation', 'recession', 'demographic', 'fiscal'].filter(k => content.includes(k)).length,
-    };
-
-    const sorted = Object.entries(themeScores).sort((a, b) => b[1] - a[1]);
-    for (const [theme] of sorted) {
-        if (!usedThemes.has(theme)) {
-            return theme;
-        }
-    }
-    return sorted[0][0];
-}
+// No more hardcoded theme-to-keyword mapping.
+// The LLM handles topic detection (primary), and extractSearchTerms handles
+// dynamic keyword extraction (fallback) — both work for ANY topic automatically.
 
 
 export async function POST(req) {
@@ -493,36 +501,31 @@ export async function POST(req) {
                 console.log("Generating custom image queries with LLM...");
 
                 const usedUrls = new Set();
-                const usedThemes = new Set();
 
                 // Generate unique queries for each post using LLM
                 for (let i = 0; i < posts.linkedin.length; i++) {
                     const post = posts.linkedin[i];
-                    
+
                     // Generate custom query for this specific post
                     const llmQueries = await generateImageQueriesLLM([post], genAI);
-                    
+
                     let image = null;
 
                     if (llmQueries && llmQueries.length > 0) {
                         console.log(`Post ${i + 1} LLM queries:`, llmQueries);
                         image = await getImageFromLLMQueries(llmQueries, usedUrls);
                     }
-                    // Fallback to theme-based if LLM failed
+                    // Fallback: extract key terms from post content and search directly
                     if (!image) {
-                        const theme = pickImageTheme(post.content, usedThemes);
-                        usedThemes.add(theme);
-                        image = await getThemedPexelsImage(theme);
-                        if (image) {
-                            console.log(`Post ${i + 1} fallback image (${theme})`);
-                        }
+                        console.log(`Post ${i + 1}: LLM queries failed, using dynamic keyword extraction`);
+                        image = await searchPexelsDynamic(post.content, usedUrls);
                     }
 
                     // Assign image if we got one and it's unique
                     if (image && !usedUrls.has(image.url)) {
                         posts.linkedin[i].image = image;
                         usedUrls.add(image.url);
-                        console.log(`Image found for post ${i + 1}: ${image.query_used || 'theme-based'}`);
+                        console.log(`Image found for post ${i + 1}: ${image.query_used || 'dynamic'}`);
                     } else {
                         console.log(`No unique image for post ${i + 1}`);
                     }
