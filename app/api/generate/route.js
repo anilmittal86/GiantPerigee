@@ -17,7 +17,31 @@ const STOP_WORDS = new Set([
     're', 'isn', 'aren', 'wasn', 'weren', 'don', 'doesn', 'didn', 'won', 'wouldn', 'couldn',
 ]);
 
-// Extract the most meaningful search terms from post content (works for ANY topic)
+// Map abstract/jargon terms to concrete visual concepts Pexels can understand
+const VISUAL_TRANSLATIONS = {
+    // Finance & Investing
+    portfolio: 'investment money', investing: 'stock market', stocks: 'stock exchange', alpha: 'trading screen',
+    returns: 'profit growth chart', dividend: 'money coins', equity: 'stock market', bonds: 'financial documents',
+    microcap: 'stock trading', compounding: 'coins stacked growing', hedge: 'wall street', allocation: 'pie chart finance',
+    // Business
+    revenue: 'business profit chart', roi: 'business growth', strategy: 'business planning', enterprise: 'corporate office',
+    startup: 'startup team working', leadership: 'business leader speaking', brand: 'marketing branding',
+    // Health & Wellness
+    wellness: 'healthy lifestyle', diagnosis: 'doctor medical', therapy: 'therapist patient', nutrition: 'healthy food plate',
+    mental: 'meditation mindfulness', fitness: 'exercise workout gym',
+    // Tech
+    algorithm: 'computer code screen', blockchain: 'digital technology', software: 'programmer laptop code',
+    // Insurance
+    coverage: 'insurance protection', premium: 'insurance policy', liability: 'legal documents', claims: 'insurance paperwork',
+    // Real estate
+    mortgage: 'house keys', property: 'real estate house', tenant: 'apartment building',
+    // Fashion
+    couture: 'fashion runway', apparel: 'clothing store', textile: 'fabric texture',
+    // Sales
+    pipeline: 'sales funnel', conversion: 'customer purchase', prospect: 'business meeting handshake',
+};
+
+// Extract the most meaningful search terms from post content, translating jargon to visual concepts
 function extractSearchTerms(postContent) {
     const words = postContent
         .toLowerCase()
@@ -37,21 +61,30 @@ function extractSearchTerms(postContent) {
         .map(([word]) => word)
         .slice(0, 8);
 
-    // Build 2-3 search queries by combining top terms
+    // Build search queries, translating abstract terms to visual concepts
     const queries = [];
+
+    // First: check if any top words have visual translations (these are the best queries)
+    for (const word of topWords) {
+        if (VISUAL_TRANSLATIONS[word]) {
+            queries.push(VISUAL_TRANSLATIONS[word]);
+            if (queries.length >= 2) break;
+        }
+    }
+
+    // Then: combine top terms as-is for broader search
     if (topWords.length >= 2) queries.push(`${topWords[0]} ${topWords[1]}`);
-    if (topWords.length >= 4) queries.push(`${topWords[2]} ${topWords[3]}`);
     if (topWords.length >= 3) queries.push(`${topWords[0]} ${topWords[2]}`);
-    // Single strongest term as last resort
     if (topWords.length >= 1) queries.push(topWords[0]);
 
-    return queries;
+    return queries.slice(0, 5);
 }
 
 // Search Pexels with dynamic queries extracted from content (works for any topic)
 async function searchPexelsDynamic(postContent, usedUrls = new Set()) {
     const PEXELS_API_KEY = process.env.PEXELS_API_KEY || 'YOUR_PEXELS_API_KEY';
     const queries = extractSearchTerms(postContent);
+    const topicKeywords = extractTopicKeywords(postContent);
 
     for (const query of queries) {
         try {
@@ -67,7 +100,8 @@ async function searchPexelsDynamic(postContent, usedUrls = new Set()) {
                 if (data.photos && data.photos.length > 0) {
                     const candidates = data.photos
                         .filter(p => !usedUrls.has(p.src.large))
-                        .map(p => ({ photo: p, score: scorePhotoRelevance(p, query) }))
+                        .filter(p => !isPhotoOffTopic(p, query))
+                        .map(p => ({ photo: p, score: scorePhotoRelevance(p, query, topicKeywords) }))
                         .sort((a, b) => b.score - a.score);
 
                     if (candidates.length > 0) {
@@ -94,27 +128,41 @@ async function searchPexelsDynamic(postContent, usedUrls = new Set()) {
 async function generateImageQueriesLLM(posts, genAI, modelName = "gemini-2.0-flash") {
     const postContents = posts.map((p, i) => `${i + 1}. "${p.content}"`).join("\n");
 
-    const prompt = `You are an expert at finding the perfect stock photo for a LinkedIn post. Analyze the ACTUAL TOPIC and CORE SUBJECT of these posts, then generate 4-5 specific Pexels search queries (2-4 words each) that would find visually compelling, on-topic images.
+    const prompt = `You are a photo editor choosing hero images for LinkedIn posts. Your job is to generate search queries for the Pexels stock photography website.
 
-CRITICAL RULES:
-- Identify the PRIMARY SUBJECT of the post (e.g. healthcare, fashion, investing, real estate, cooking, fitness, etc.) and use domain-specific imagery
-- NEVER default to generic "business meeting" or "laptop office" queries. Match the actual subject matter
-- Generate queries from MOST SPECIFIC to LEAST SPECIFIC so we try the best match first
-- Think: "If I were a graphic designer choosing a hero image for this post, what would I search for?"
-- The image should make someone STOP SCROLLING when paired with this post on LinkedIn
-- Consider both literal imagery (e.g. "stock market graph" for finance) and metaphorical imagery (e.g. "mountain summit sunrise" for achievement) — include both types
+CRITICAL: Pexels is a PHOTO site. It understands VISUAL descriptions of scenes, objects, and people — NOT abstract business jargon.
 
-Return ONLY valid JSON array of strings (no markdown):
-["most_specific_query", "specific_query", "metaphorical_query", "broader_query", "fallback_query"]
+YOUR TASK: Read the post, identify its core topic, then generate 5 search queries that describe PHOTOGRAPHS a photographer would actually take.
+
+TRANSLATION EXAMPLES (learn this pattern):
+- Post about investing/stocks → "stock exchange trading floor", "financial charts computer screen", "gold coins stacked growth", "bull wall street"
+- Post about health/wellness → "doctor patient consultation", "healthy food preparation", "morning exercise sunrise", "medical stethoscope"
+- Post about fashion → "fashion runway model", "clothing store display", "designer fabric texture", "stylish outfit street"
+- Post about insurance → "family protection umbrella rain", "insurance agent handshake", "house keys new home", "safety helmet construction"
+- Post about sales → "handshake business deal", "sales team celebration", "customer shopping retail", "revenue chart upward"
+- Post about AI/tech → "robot artificial intelligence", "neural network visualization", "programmer coding screen", "futuristic technology"
+- Post about real estate → "luxury house exterior", "apartment building modern", "real estate agent keys", "cityscape skyline"
+- Post about food/cooking → "chef kitchen restaurant", "fresh ingredients cutting board", "gourmet plated dish", "farmers market produce"
+
+BAD QUERIES (never generate these):
+- "portfolio diversification" → Pexels doesn't understand this, returns random images
+- "alpha generation microcap" → financial jargon, returns nothing relevant
+- "brand awareness strategy" → too abstract, returns nothing
+- "market-cap weighted indices" → too technical
+
+GOOD QUERIES describe what a CAMERA would see:
+- Concrete objects: "coins", "charts", "stethoscope", "runway", "keys"
+- Real scenes: "trading floor", "doctor office", "fashion show", "kitchen"
+- People doing things: "chef cooking", "trader screen", "model walking"
+
+Return ONLY a JSON array of 5 strings, ordered from most specific to broadest:
+["very_specific_photo", "specific_photo", "related_scene", "broader_visual", "safe_fallback"]
 
 Posts:
 ${postContents}`;
 
     try {
-        const model = genAI.getGenerativeModel({
-            model: modelName,
-            tools: [{ googleSearch: {} }]  // grounding enabled
-        });
+        const model = genAI.getGenerativeModel({ model: modelName });
         const result = await model.generateContent(prompt);
         const text = result.response.text().trim();
 
@@ -122,7 +170,7 @@ ${postContents}`;
         const match = text.match(/\[[\s\S]*\]/);
         if (match) {
             const queries = JSON.parse(match[0]);
-            return queries.slice(0, 5); // Return max 5 queries
+            return queries.slice(0, 5);
         }
     } catch (error) {
         console.error("LLM image query generation error:", error);
@@ -130,26 +178,69 @@ ${postContents}`;
     return null;
 }
 
-// Score a Pexels photo's relevance to the search query using alt text
-function scorePhotoRelevance(photo, query) {
+// Extract topic keywords from post content for relevance validation
+function extractTopicKeywords(postContent) {
+    const words = postContent
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 3 && !STOP_WORDS.has(w));
+
+    const freq = {};
+    for (const word of words) {
+        freq[word] = (freq[word] || 0) + 1;
+    }
+    return Object.entries(freq)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([word]) => word);
+}
+
+// Score a Pexels photo's relevance to the search query AND the post topic
+function scorePhotoRelevance(photo, query, topicKeywords = []) {
     const queryWords = query.toLowerCase().split(/\s+/);
     const alt = (photo.alt || '').toLowerCase();
     const url = (photo.url || '').toLowerCase();
 
     let score = 0;
+
+    // Query word matching in alt text (primary signal)
     for (const word of queryWords) {
-        if (alt.includes(word)) score += 2;
+        if (alt.includes(word)) score += 3;
         if (url.includes(word)) score += 1;
     }
+
+    // Topic coherence: bonus if alt text mentions post-related words
+    if (topicKeywords.length > 0) {
+        let topicOverlap = 0;
+        for (const keyword of topicKeywords) {
+            if (alt.includes(keyword)) topicOverlap++;
+        }
+        score += topicOverlap * 2;
+    }
+
     // Prefer landscape photos with good dimensions for LinkedIn
     const ratio = photo.width / photo.height;
-    if (ratio >= 1.2 && ratio <= 2.0) score += 1; // Good LinkedIn aspect ratio
+    if (ratio >= 1.2 && ratio <= 2.0) score += 1;
+
     return score;
 }
 
-// Get image from Pexels using custom LLM-generated queries
-async function getImageFromLLMQueries(queries, usedUrls = new Set()) {
+// Check if a photo's alt text is clearly off-topic for the query
+function isPhotoOffTopic(photo, query) {
+    const alt = (photo.alt || '').toLowerCase();
+    if (!alt || alt.length < 5) return false; // Can't tell, give benefit of doubt
+
+    const queryWords = query.toLowerCase().split(/\s+/);
+    // If none of the query words appear in the alt text, it's suspect
+    const hasAnyMatch = queryWords.some(w => w.length > 3 && alt.includes(w));
+    return !hasAnyMatch && alt.length > 20; // Only flag if alt text is substantial but has zero overlap
+}
+
+// Get image from Pexels using custom LLM-generated queries with quality filtering
+async function getImageFromLLMQueries(queries, usedUrls = new Set(), postContent = '') {
     const PEXELS_API_KEY = process.env.PEXELS_API_KEY || 'YOUR_PEXELS_API_KEY';
+    const topicKeywords = postContent ? extractTopicKeywords(postContent) : [];
 
     for (const query of queries) {
         try {
@@ -163,16 +254,22 @@ async function getImageFromLLMQueries(queries, usedUrls = new Set()) {
             if (response.ok) {
                 const data = await response.json();
                 if (data.photos && data.photos.length > 0) {
-                    // Score and rank photos by relevance, filter out already-used URLs
+                    // Score and rank photos, filter used URLs and off-topic results
                     const candidates = data.photos
                         .filter(p => !usedUrls.has(p.src.large))
-                        .map(p => ({ photo: p, score: scorePhotoRelevance(p, query) }))
+                        .filter(p => !isPhotoOffTopic(p, query))
+                        .map(p => ({ photo: p, score: scorePhotoRelevance(p, query, topicKeywords) }))
                         .sort((a, b) => b.score - a.score);
 
-                    if (candidates.length > 0) {
-                        // Pick from top 3 scored results with slight randomness for variety
-                        const topN = Math.min(3, candidates.length);
-                        const pick = candidates[Math.floor(Math.random() * topN)].photo;
+                    // Quality gate: require minimum score of 2 (at least one meaningful match)
+                    // unless this is the last query (broadest fallback)
+                    const isLastQuery = query === queries[queries.length - 1];
+                    const minScore = isLastQuery ? 0 : 2;
+                    const qualityCandidates = candidates.filter(c => c.score >= minScore);
+
+                    if (qualityCandidates.length > 0) {
+                        const topN = Math.min(3, qualityCandidates.length);
+                        const pick = qualityCandidates[Math.floor(Math.random() * topN)].photo;
                         return {
                             url: pick.src.large,
                             photographer: pick.photographer,
@@ -181,6 +278,8 @@ async function getImageFromLLMQueries(queries, usedUrls = new Set()) {
                             alt: pick.alt || ''
                         };
                     }
+                    // If quality gate rejected all, continue to next query
+                    console.log(`Query "${query}" returned ${candidates.length} results but none passed quality gate (min score: ${minScore})`);
                 }
             }
         } catch (error) {
@@ -513,7 +612,7 @@ export async function POST(req) {
 
                     if (llmQueries && llmQueries.length > 0) {
                         console.log(`Post ${i + 1} LLM queries:`, llmQueries);
-                        image = await getImageFromLLMQueries(llmQueries, usedUrls);
+                        image = await getImageFromLLMQueries(llmQueries, usedUrls, post.content);
                     }
                     // Fallback: extract key terms from post content and search directly
                     if (!image) {
