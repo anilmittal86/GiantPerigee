@@ -445,40 +445,39 @@ export async function POST(req) {
             if (posts.linkedin && Array.isArray(posts.linkedin) && posts.linkedin.length > 0) {
                 console.log("Generating custom image queries with LLM...");
 
-                // Generate custom queries using LLM
-                const llmQueries = await generateImageQueriesLLM(posts.linkedin, genAI);
-                
-                let usedUrls = new Set();
-                
-                if (llmQueries && llmQueries.length > 0) {
-                    console.log("LLM generated queries:", llmQueries);
-                    
-                    // Try LLM-generated queries first
-                    const image = await getImageFromLLMQueries(llmQueries);
-                    
-                    if (image) {
-                        // Use the same image for all posts (or make it unique per post if needed)
-                        posts.linkedin[0].image = image;
-                        usedUrls.add(image.url);
-                        console.log(`LLM image found: "${image.query_used}"`);
-                    } else {
-                        console.log("LLM queries returned no images, falling back to theme-based");
-                    }
-                }
-
-                // Fallback: use theme-based if LLM failed or for remaining posts
+                const usedUrls = new Set();
                 const usedThemes = new Set();
+
+                // Generate unique queries for each post using LLM
                 for (let i = 0; i < posts.linkedin.length; i++) {
-                    if (posts.linkedin[i].image) continue; // Already has LLM image
+                    const post = posts.linkedin[i];
                     
-                    const theme = pickImageTheme(posts.linkedin[i].content, usedThemes);
-                    usedThemes.add(theme);
+                    // Generate custom query for this specific post
+                    const llmQueries = await generateImageQueriesLLM([post], genAI);
                     
-                    const fallbackImage = await getThemedPexelsImage(theme);
-                    if (fallbackImage && !usedUrls.has(fallbackImage.url)) {
-                        posts.linkedin[i].image = fallbackImage;
-                        usedUrls.add(fallbackImage.url);
-                        console.log(`Fallback image (${theme}) found for post ${i + 1}`);
+                    let image = null;
+                    
+                    if (llmQueries && llmQueries.length > 0) {
+                        console.log(`Post ${i + 1} LLM queries:`, llmQueries);
+                        image = await getImageFromLLMQueries(llmQueries);
+                    }
+                    // Fallback to theme-based if LLM failed
+                    if (!image) {
+                        const theme = pickImageTheme(post.content, usedThemes);
+                        usedThemes.add(theme);
+                        image = await getThemedPexelsImage(theme);
+                        if (image) {
+                            console.log(`Post ${i + 1} fallback image (${theme})`);
+                        }
+                    }
+
+                    // Assign image if we got one and it's unique
+                    if (image && !usedUrls.has(image.url)) {
+                        posts.linkedin[i].image = image;
+                        usedUrls.add(image.url);
+                        console.log(`Image found for post ${i + 1}: ${image.query_used || 'theme-based'}`);
+                    } else {
+                        console.log(`No unique image for post ${i + 1}`);
                     }
                 }
             }
