@@ -49,11 +49,76 @@ async function getThemedPexelsImage(theme) {
     return null;
 }
 
-// Map post content to the best image theme
+// Generate custom Pexels search queries using LLM
+async function generateImageQueriesLLM(posts, genAI, modelName = "gemini-2.0-flash") {
+    const postContents = posts.map((p, i) => `${i + 1}. "${p.content}"`).join("\n");
+
+    const prompt = `Given these LinkedIn posts, generate 2-3 specific Pexels search queries (1-4 words each) that would find the best matching professional/tech/business images.
+
+Return ONLY valid JSON array of strings (no markdown):
+["query1", "query2", "query3"]
+
+Posts:
+${postContents}
+
+Examples of good queries: "modern office workspace", "AI technology abstract", "data analytics dashboard", "team meeting collaboration", "business growth chart"`;
+
+    try {
+        const model = genAI.getGenerativeModel({ 
+            model: modelName,
+            tools: [{ googleSearch: {} }]  // grounding enabled
+        });
+        const result = await model.generateContent(prompt);
+        const text = result.response.text().trim();
+        
+        // Extract JSON array
+        const match = text.match(/\[[\s\S]*\]/);
+        if (match) {
+            const queries = JSON.parse(match[0]);
+            return queries.slice(0, 3); // Return max 3 queries
+        }
+    } catch (error) {
+        console.error("LLM image query generation error:", error);
+    }
+    return null;
+}
+
+// Get image from Pexels using custom LLM-generated queries
+async function getImageFromLLMQueries(queries) {
+    const PEXELS_API_KEY = process.env.PEXELS_API_KEY || 'YOUR_PEXELS_API_KEY';
+
+    for (const query of queries) {
+        try {
+            const response = await fetch(
+                `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=15&orientation=landscape&size=large`,
+                {
+                    headers: { 'Authorization': PEXELS_API_KEY }
+                }
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.photos && data.photos.length > 0) {
+                    const photo = data.photos[Math.floor(Math.random() * Math.min(data.photos.length, 8))];
+                    return {
+                        url: photo.src.large,
+                        photographer: photo.photographer,
+                        photographer_url: photo.photographer_url,
+                        query_used: query
+                    };
+                }
+            }
+        } catch (error) {
+            console.error(`Pexels search error for query "${query}":`, error);
+        }
+    }
+    return null;
+}
+
+// Fallback: Map post content to best image theme (keyword-based)
 function pickImageTheme(postContent, usedThemes) {
     const content = postContent.toLowerCase();
 
-    // Score each theme based on keyword matches in the post
     const themeScores = {
         analytics: ['analytics', 'dashboard', 'metrics', 'measure', 'track', 'monitor', 'kpi', 'performance', 'report'].filter(k => content.includes(k)).length,
         marketing: ['marketing', 'content', 'campaign', 'brand awareness', 'audience', 'engagement', 'strategy'].filter(k => content.includes(k)).length,
@@ -65,14 +130,12 @@ function pickImageTheme(postContent, usedThemes) {
         growth: ['growth', 'scale', 'increase', 'improve', 'boost', 'accelerate', 'opportunity'].filter(k => content.includes(k)).length,
     };
 
-    // Sort by score descending, pick the highest that hasn't been used
     const sorted = Object.entries(themeScores).sort((a, b) => b[1] - a[1]);
     for (const [theme] of sorted) {
         if (!usedThemes.has(theme)) {
             return theme;
         }
     }
-    // All themes used, pick highest scoring anyway
     return sorted[0][0];
 }
 
@@ -378,36 +441,45 @@ export async function POST(req) {
                 }
             }
 
-            // Add themed images to LinkedIn posts using content-based theme matching
+            // Add images to LinkedIn posts using LLM-generated custom queries
             if (posts.linkedin && Array.isArray(posts.linkedin) && posts.linkedin.length > 0) {
-                console.log("Fetching themed images for LinkedIn posts...");
+                console.log("Generating custom image queries with LLM...");
 
-                // Pick a unique theme for each post based on content
-                const usedThemes = new Set();
-                const themes = posts.linkedin.map(post => {
-                    const theme = pickImageTheme(post.content, usedThemes);
-                    usedThemes.add(theme);
-                    return theme;
-                });
-
-                console.log("Selected image themes:", themes);
-
-                // Fetch all images in parallel
-                const imagePromises = themes.map(theme => getThemedPexelsImage(theme));
-                const images = await Promise.all(imagePromises);
-
-                const usedUrls = new Set();
-                for (let i = 0; i < posts.linkedin.length; i++) {
-                    const image = images[i];
-                    if (image && !usedUrls.has(image.url)) {
-                        posts.linkedin[i].image = image;
+                // Generate custom queries using LLM
+                const llmQueries = await generateImageQueriesLLM(posts.linkedin, genAI);
+                
+                let usedUrls = new Set();
+                
+                if (llmQueries && llmQueries.length > 0) {
+                    console.log("LLM generated queries:", llmQueries);
+                    
+                    // Try LLM-generated queries first
+                    const image = await getImageFromLLMQueries(llmQueries);
+                    
+                    if (image) {
+                        // Use the same image for all posts (or make it unique per post if needed)
+                        posts.linkedin[0].image = image;
                         usedUrls.add(image.url);
-                        console.log(`Themed image (${themes[i]}) found for post ${i + 1}`);
+                        console.log(`LLM image found: "${image.query_used}"`);
                     } else {
-                        console.log(`No image for post ${i + 1}, posting without image`);
+                        console.log("LLM queries returned no images, falling back to theme-based");
                     }
-                    // Clean up
-                    delete posts.linkedin[i].image_keywords;
+                }
+
+                // Fallback: use theme-based if LLM failed or for remaining posts
+                const usedThemes = new Set();
+                for (let i = 0; i < posts.linkedin.length; i++) {
+                    if (posts.linkedin[i].image) continue; // Already has LLM image
+                    
+                    const theme = pickImageTheme(posts.linkedin[i].content, usedThemes);
+                    usedThemes.add(theme);
+                    
+                    const fallbackImage = await getThemedPexelsImage(theme);
+                    if (fallbackImage && !usedUrls.has(fallbackImage.url)) {
+                        posts.linkedin[i].image = fallbackImage;
+                        usedUrls.add(fallbackImage.url);
+                        console.log(`Fallback image (${theme}) found for post ${i + 1}`);
+                    }
                 }
             }
         }
