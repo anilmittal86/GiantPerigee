@@ -70,6 +70,47 @@
   --radius-full: 9999px;
 }
 
+/* Light Theme Overrides */
+[data-theme="light"] {
+  --background: #f8fafc;
+  --background-secondary: #f1f5f9;
+  --surface: #ffffff;
+  --surface-elevated: #f8fafc;
+  --surface-highlight: #e2e8f0;
+
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --primary-light: rgba(99, 102, 241, 0.1);
+  --primary-glow: rgba(99, 102, 241, 0.15);
+
+  --gradient-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+  --gradient-primary-hover: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #9333ea 100%);
+  --gradient-surface: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  --gradient-hero: linear-gradient(135deg, #6366f1 0%, #8b5cf6 30%, #a855f7 60%, #ec4899 100%);
+
+  --linkedin-light: rgba(10, 102, 194, 0.08);
+  --reddit-light: rgba(255, 69, 0, 0.08);
+  --twitter-light: rgba(29, 155, 240, 0.08);
+
+  --text-main: #0f172a;
+  --text-secondary: #475569;
+  --text-dim: #94a3b8;
+
+  --border: rgba(15, 23, 42, 0.1);
+  --border-light: rgba(15, 23, 42, 0.05);
+  --border-active: rgba(99, 102, 241, 0.35);
+
+  --success-light: rgba(16, 185, 129, 0.1);
+  --warning-light: rgba(245, 158, 11, 0.1);
+  --error-light: rgba(239, 68, 68, 0.08);
+
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 16px 0 rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+  --shadow-primary: 0 4px 14px 0 rgba(99, 102, 241, 0.2);
+  --shadow-glow: 0 0 40px rgba(99, 102, 241, 0.08);
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -126,6 +167,37 @@ p {
   flex-direction: column;
 }
 
+/* Light theme body background */
+[data-theme="light"] body {
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.06), transparent),
+    radial-gradient(rgba(15, 23, 42, 0.03) 1px, transparent 1px);
+}
+
+/* Theme Toggle Button */
+.theme-toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+  background: var(--surface-highlight);
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: scale(1.05);
+}
+
 /* Navbar - Premium Glassmorphism */
 .navbar {
   background: rgba(10, 15, 26, 0.8);
@@ -139,6 +211,10 @@ p {
   transition: all 0.3s ease;
 }
 
+[data-theme="light"] .navbar {
+  background: rgba(248, 250, 252, 0.85);
+}
+
 .navbar-inner {
   max-width: 1200px;
   margin: 0 auto;
@@ -148,6 +224,12 @@ p {
   justify-content: space-between;
   align-items: center;
   width: 100%;
+}
+
+.navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .navbar-left {

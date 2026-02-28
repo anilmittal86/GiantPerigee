@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Configuration from "./components/Configuration";
 import PostGenerator from "./components/PostGenerator";
 import axios from "axios";
@@ -11,6 +11,22 @@ export default function Home() {
     const [generatedPosts, setGeneratedPosts] = useState([]);
     const [loading, setLoading] = useState(false);
     const [configData, setConfigData] = useState({});
+    const [theme, setTheme] = useState("dark");
+
+    useEffect(() => {
+        const saved = localStorage.getItem("perigee-theme");
+        if (saved) {
+            setTheme(saved);
+            document.documentElement.setAttribute("data-theme", saved);
+        }
+    }, []);
+
+    const toggleTheme = () => {
+        const next = theme === "dark" ? "light" : "dark";
+        setTheme(next);
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("perigee-theme", next);
+    };
 
     const handleGenerate = async (config) => {
         setConfigData(config); // Save for posting later
@@ -57,9 +73,19 @@ export default function Home() {
                         </div>
                     </div>
 
-                    <Link href="/guide" className="btn-secondary">
-                        📚 User Guide
-                    </Link>
+                    <div className="navbar-right">
+                        <button
+                            className="theme-toggle"
+                            onClick={toggleTheme}
+                            aria-label="Toggle theme"
+                            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                        >
+                            {theme === "dark" ? "☀️" : "🌙"}
+                        </button>
+                        <Link href="/guide" className="btn-secondary">
+                            📚 User Guide
+                        </Link>
+                    </div>
                 </div>
             </nav>
 
