@@ -52,18 +52,25 @@ export default function Home() {
                                 priority
                             />
                         </Link>
-                        <div style={{ fontSize: "0.8rem", color: "var(--text-dim)", fontWeight: 500, marginTop: "4px" }}>
+                        <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", fontWeight: 500, marginTop: "4px", letterSpacing: "0.1em", textTransform: "uppercase" }}>
                             Social Media Manager
                         </div>
                     </div>
 
-                    <Link href="/guide" className="btn-secondary" style={{ marginTop: "0.5rem" }}>
+                    <Link href="/guide" className="btn-secondary">
                         📚 User Guide
                     </Link>
                 </div>
             </nav>
 
             <main className="main-content">
+                <div className="hero-section">
+                    <h1 className="hero-title">AI-Powered Content Studio</h1>
+                    <p className="hero-subtitle">
+                        Generate professional social media content for LinkedIn, Reddit, and Twitter in seconds
+                    </p>
+                </div>
+
                 <Configuration onGenerate={handleGenerate} />
 
                 <PostGenerator
