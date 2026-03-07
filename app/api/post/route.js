@@ -61,6 +61,8 @@ async function uploadImageToLinkedIn(imageUrl, accessToken, author) {
 }
 
 export async function POST(req) {
+    let authorUsed = null;
+
     try {
         const { post_content, access_token: clientToken, urn: clientUrn, image_url } = await req.json();
 
@@ -87,6 +89,7 @@ export async function POST(req) {
         if (/^\d+$/.test(cleanUrn)) {
             cleanUrn = `urn:li:organization:${cleanUrn}`;
         }
+        authorUsed = cleanUrn;
 
         let assetUrn = null;
         if (image_url) {
@@ -158,7 +161,7 @@ export async function POST(req) {
             {
                 error: errorMsg,
                 details: error.response?.data,
-                debug_author_used: body.author // Send back what we tried to use
+                debug_author_used: authorUsed // Send back the author URN we tried to use
             },
             { status: error.response?.status || 500 }
         );
